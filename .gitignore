@@ -41,6 +41,7 @@ Release/
 *.temp
 *.vt
 *.dat
+#.html
 =======
 vn.ctp/build/*
 vn.lts/build/*

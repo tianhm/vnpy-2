@@ -33,6 +33,8 @@ from vtFunction import todayDate
 ########################################################################
 class CtaEngine(object):
     """CTA策略引擎"""
+    """CTA strategy engine"""
+
     settingFileName = 'CTA_setting.json'
     path = os.path.abspath(os.path.dirname(__file__))
     settingFileName = os.path.join(path, settingFileName)      
@@ -44,38 +46,58 @@ class CtaEngine(object):
         self.eventEngine = eventEngine
         
         # 当前日期
+        # Date of today
         self.today = todayDate()
         
         # 保存策略实例的字典
         # key为策略名称，value为策略实例，注意策略名称不允许重复
+
+        # Dictionary: record strategy instances
+        # key: name of strategies, value: strategy instance, notice that the names of strategies cannot repeat
         self.strategyDict = {}
         
         # 保存vtSymbol和策略实例映射的字典（用于推送tick数据）
         # 由于可能多个strategy交易同一个vtSymbol，因此key为vtSymbol
         # value为包含所有相关strategy对象的list
+
+        # Dictionary: record market systems (combination of vtSymbol and strategies) (to push tick data)
+        # key: vtSymbol, more than one strategies can be used to trade one vtSymbol
+        # value: list the contains all the strategies
         self.tickStrategyDict = {}
         
         # 保存vtOrderID和strategy对象映射的字典（用于推送order和trade数据）
         # key为vtOrderID，value为strategy对象
+
+        # Dictionary: record combination of vtOrderID and strategy (to push order and trade information)
+        # key: vtOrderID; value: strategy instance
         self.orderStrategyDict = {}     
         
         # 本地停止单编号计数
+        # count local stop orders
         self.stopOrderCount = 0
         # stopOrderID = STOPORDERPREFIX + str(stopOrderCount)
         
         # 本地停止单字典
         # key为stopOrderID，value为stopOrder对象
+
+        # Dictionary: local stop order
+        # key: StopOrderID; value: stopOrder instence
         self.stopOrderDict = {}             # 停止单撤销后不会从本字典中删除
         self.workingStopOrderDict = {}      # 停止单撤销后会从本字典中删除
         
         # 持仓缓存字典
         # key为vtSymbol，value为PositionBuffer对象
+
+        # Dictionary: buffer position
+        # key: vtSymbol, value: PositionBuffer
         self.posBufferDict = {}
         
         # 引擎类型为实盘
+        # set engine type to real trading
         self.engineType = ENGINETYPE_TRADING
         
         # 注册事件监听
+        # register event
         self.registerEvent()
  
     #----------------------------------------------------------------------
@@ -215,6 +237,8 @@ class CtaEngine(object):
     #----------------------------------------------------------------------
     def processStopOrder(self, tick):
         """收到行情后处理本地停止单（检查是否要立即发出）"""
+        """after recieve market data, process local stop orders (check whether to send them immidiately)"""
+
         vtSymbol = tick.vtSymbol
         
         # 首先检查是否有策略交易该合约
@@ -239,6 +263,8 @@ class CtaEngine(object):
     #----------------------------------------------------------------------
     def processTickEvent(self, event):
         """处理行情推送"""
+        """process market tick data"""
+
         tick = event.dict_['data']
         # 收到tick行情后，先处理本地停止单（检查是否要立即发出）
         self.processStopOrder(tick)

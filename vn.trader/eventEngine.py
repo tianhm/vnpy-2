@@ -19,6 +19,10 @@ class EventEngine(object):
     事件驱动引擎
     事件驱动引擎中所有的变量都设置为了私有，这是为了防止不小心
     从外部修改了这些变量的值或状态，导致bug。
+
+    Event-Driven Engine
+    All the variables in Event-Driven Engine are set as private
+    In case modification from outside leads to BUG
     
     变量说明
     __queue：私有变量，事件队列
@@ -26,6 +30,13 @@ class EventEngine(object):
     __thread：私有变量，事件处理线程
     __timer：私有变量，计时器
     __handlers：私有变量，事件处理函数字典
+
+    Variables Statement
+    __queue: private variable, event queue
+    __active: private variable, event engine on-off
+    __thread: private variable, event-driven processing thread
+    __timer: private variable, Timer
+    __handlers: private variable, event processing dictionary
     
     
     方法说明
@@ -37,14 +48,30 @@ class EventEngine(object):
     register：公共方法，向引擎中注册监听函数
     unregister：公共方法，向引擎中注销监听函数
     put：公共方法，向事件队列中存入新的事件
+
+    Methods Statement
+    __run: private method, to keep event-driven processing thread running
+    __process: private method, deal with Event, call functions that register in the Engine
+    __onTimer: private method, once Timer event is triggered, put Timer event to Event Queue
+    start: public method, engine on
+    stop: public method, engine off
+    register: public method, register functions to the Engine
+    unregister: public method, unregister functions to the Engine
+    put: public method, add new event to Event Queue
     
     事件监听函数必须定义为输入参数仅为一个event对象，即：
+
+    Event functions can only have a input, "event"
     
     函数
+    function
+
     def func(event)
         ...
     
     对象方法
+    method
+
     def method(self, event)
         ...
         
@@ -53,28 +80,45 @@ class EventEngine(object):
     #----------------------------------------------------------------------
     def __init__(self):
         """初始化事件引擎"""
+
+        """Initialise event engine"""
+
         # 事件队列
+
+        # event queue
         self.__queue = Queue()
         
         # 事件引擎开关
+
+        # event engine on-off
         self.__active = False
         
         # 事件处理线程
+
+        # event processing thread
         self.__thread = Thread(target = self.__run)
         
         # 计时器，用于触发计时器事件
+
+        # Timer, to trigger timer event
         self.__timer = QTimer()
         self.__timer.timeout.connect(self.__onTimer)
         
         # 这里的__handlers是一个字典，用来保存对应的事件调用关系
         # 其中每个键对应的值是一个列表，列表中保存了对该事件进行监听的函数功能
+
+        # The "__handlers" here is a dictionary, to record the handlers of specific event
+        # todo
         self.__handlers = defaultdict(list)
         
     #----------------------------------------------------------------------
     def __run(self):
         """引擎运行"""
+        """run engine"""
+
         while self.__active == True:
             try:
+                # set block time to be 1 second
                 event = self.__queue.get(block = True, timeout = 1)  # 获取事件的阻塞时间设为1秒
                 self.__process(event)
             except Empty:
@@ -83,7 +127,11 @@ class EventEngine(object):
     #----------------------------------------------------------------------
     def __process(self, event):
         """处理事件"""
+        """process event"""
+
         # 检查是否存在对该事件进行监听的处理函数
+        # check whether this event has a handler function
+
         if event.type_ in self.__handlers:
             # 若存在，则按顺序将事件传递给处理函数执行
             [handler(event) for handler in self.__handlers[event.type_]]
@@ -128,24 +176,39 @@ class EventEngine(object):
     #----------------------------------------------------------------------
     def register(self, type_, handler):
         """注册事件处理函数监听"""
+        """register event handle function"""
+
         # 尝试获取该事件类型对应的处理函数列表，若无defaultDict会自动创建新的list
+        # try to retreat corresponding handlers list for this event type, if cannot, defaultDict will create
+        # new list automatically (more than one handler functions can be added)
+
         handlerList = self.__handlers[type_]
         
         # 若要注册的处理器不在该事件的处理器列表中，则注册该事件
+        # if the handler is not in the handlers list, register this handler function
+
         if handler not in handlerList:
             handlerList.append(handler)
             
     #----------------------------------------------------------------------
     def unregister(self, type_, handler):
         """注销事件处理函数监听"""
-        # 尝试获取该事件类型对应的处理函数列表，若无则忽略该次注销请求   
+        """unregister event handler function"""
+
+        # 尝试获取该事件类型对应的处理函数列表，若无则忽略该次注销请求
+        # try to retreat corresponding handlers list for this event type, if no list matched, ignore
+
         handlerList = self.__handlers[type_]
             
         # 如果该函数存在于列表中，则移除
+        # if this function is in handlers list, delete
+
         if handler in handlerList:
             handlerList.remove(handler)
 
         # 如果函数列表为空，则从引擎中移除该事件类型
+        # if handlers list is empty, remove this list from __handlers
+
         if not handlerList:
             del self.__handlers[type_]
             
@@ -276,6 +339,7 @@ class EventEngine2(object):
 ########################################################################
 class Event:
     """事件对象"""
+    """Event object"""
 
     #----------------------------------------------------------------------
     def __init__(self, type_=None):
@@ -287,17 +351,22 @@ class Event:
 #----------------------------------------------------------------------
 def test():
     """测试函数"""
+    """test function"""
+
     import sys
     from datetime import datetime
     from PyQt4.QtCore import QCoreApplication
     
     def simpletest(event):
         print u'处理每秒触发的计时器事件：%s' % str(datetime.now())
-    
+
+    def simpletest2(event):
+        print "this is additional test: %s" % str(datetime.now())
     app = QCoreApplication(sys.argv)
     
     ee = EventEngine2()
     ee.register(EVENT_TIMER, simpletest)
+    ee.register(EVENT_TIMER, simpletest2)
     ee.start()
     
     app.exec_()

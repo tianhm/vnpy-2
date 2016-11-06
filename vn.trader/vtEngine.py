@@ -18,6 +18,7 @@ from riskManager.rmEngine import RmEngine
 ########################################################################
 class MainEngine(object):
     """主引擎"""
+    """Main engine"""
 
     #----------------------------------------------------------------------
     def __init__(self):
@@ -227,8 +228,11 @@ class MainEngine(object):
     #----------------------------------------------------------------------
     def dbConnect(self):
         """连接MongoDB数据库"""
+        """connect MongoDB"""
+
         if not self.dbClient:
             # 读取MongoDB的设置
+            # load MongoDB setting
             host, port = loadMongoSetting()
                 
             try:
@@ -285,6 +289,7 @@ class MainEngine(object):
 ########################################################################
 class DataEngine(object):
     """数据引擎"""
+    """data engine"""
     contractFileName = 'ContractData.vt'
 
     #----------------------------------------------------------------------
@@ -293,23 +298,33 @@ class DataEngine(object):
         self.eventEngine = eventEngine
         
         # 保存合约详细信息的字典
+        # dictionary: record contracts' information
         self.contractDict = {}
         
         # 保存委托数据的字典
+        # dictionary: record order information
         self.orderDict = {}
         
         # 保存活动委托数据的字典（即可撤销）
+        # dictionary: record working order information
         self.workingOrderDict = {}
         
         # 读取保存在硬盘的合约数据
+        # load local contracts' information
         self.loadContracts()
         
         # 注册事件监听
+        # register event
         self.registerEvent()
         
     #----------------------------------------------------------------------
     def updateContract(self, event):
         """更新合约数据"""
+        """
+        update constract information
+        this is a handler method
+        """
+
         contract = event.dict_['data']
         self.contractDict[contract.vtSymbol] = contract
         self.contractDict[contract.symbol] = contract       # 使用常规代码（不包括交易所）可能导致重复
@@ -347,14 +362,23 @@ class DataEngine(object):
     #----------------------------------------------------------------------
     def updateOrder(self, event):
         """更新委托数据"""
+        """
+        update order information
+        this is a handler method
+        """
+
         order = event.dict_['data']        
         self.orderDict[order.vtOrderID] = order
         
         # 如果订单的状态是全部成交或者撤销，则需要从workingOrderDict中移除
+        # if order status is all traded or cancelled, remove this order from "workingOrderDict"
+
         if order.status == STATUS_ALLTRADED or order.status == STATUS_CANCELLED:
             if order.vtOrderID in self.workingOrderDict:
                 del self.workingOrderDict[order.vtOrderID]
-        # 否则则更新字典中的数据        
+
+        # 否则则更新字典中的数据
+        # else, update order information
         else:
             self.workingOrderDict[order.vtOrderID] = order
         

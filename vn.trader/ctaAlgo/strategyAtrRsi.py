@@ -37,6 +37,7 @@ class AtrRsiStrategy(CtaTemplate):
     barMinute = EMPTY_STRING    # K线当前的分钟
 
     bufferSize = 100                    # 需要缓存的数据的大小
+                                        # Pre-calculation number
     bufferCount = 0                     # 目前已经缓存了的数据的计数
     highArray = np.zeros(bufferSize)    # K线最高价的数组
     lowArray = np.zeros(bufferSize)     # K线最低价的数组
@@ -241,39 +242,44 @@ if __name__ == '__main__':
     # 导入PyQt4的包是为了保证matplotlib使用PyQt4而不是PySide，防止初始化出错
     from ctaBacktesting import *
     from PyQt4 import QtCore, QtGui
-    
-    # 创建回测引擎
-    engine = BacktestingEngine()
-    
-    # 设置引擎的回测模式为K线
-    engine.setBacktestingMode(engine.BAR_MODE)
 
-    # 设置回测用的数据起始日期
+    '''
+    创建回测引擎
+    设置引擎的回测模式为K线
+    设置回测用的数据起始日期
+    载入历史数据到引擎中
+    在引擎中创建策略对象
+
+    Create backtesting engine
+    Set backtest mode as "Bar"
+    Set "Start Date" of data range
+    Load historical data to engine
+    Create strategy instance in engine
+    '''
+    engine = BacktestingEngine()
+    engine.setBacktestingMode(engine.BAR_MODE)
     engine.setStartDate('20120101')
+    engine.setDatabase(MINUTE_DB_NAME, 'IF0000')
+    # Set parameters for strategy
+    d = {'atrLength': 11}
+    engine.initStrategy(AtrRsiStrategy, d)
     
     # 设置产品相关参数
     engine.setSlippage(0.2)     # 股指1跳
-    engine.setRate(0.3/10000)   # 万0.3
-    engine.setSize(300)         # 股指合约大小        
+    engine.setCommission(0.3/10000)   # 万0.3
+    engine.setSize(300)         # 股指合约大小
     
-    # 设置使用的历史数据库
-    engine.setDatabase(MINUTE_DB_NAME, 'IF0000')
+    # 开始跑回测
+    engine.runBacktesting()
     
-    ## 在引擎中创建策略对象
-    #d = {'atrLength': 11}
-    #engine.initStrategy(AtrRsiStrategy, d)
-    
-    ## 开始跑回测
-    ##engine.runBacktesting()
-    
-    ## 显示回测结果
-    ##engine.showBacktestingResult()
+    # 显示回测结果
+    engine.showBacktestingResult()
     
     # 跑优化
-    setting = OptimizationSetting()                 # 新建一个优化任务设置对象
-    setting.setOptimizeTarget('capital')            # 设置优化排序的目标是策略净盈利
-    setting.addParameter('atrLength', 11, 20, 1)    # 增加第一个优化参数atrLength，起始11，结束12，步进1
-    setting.addParameter('atrMa', 20, 30, 5)        # 增加第二个优化参数atrMa，起始20，结束30，步进1
+    # setting = OptimizationSetting()                 # 新建一个优化任务设置对象
+    # setting.setOptimizeTarget('capital')            # 设置优化排序的目标是策略净盈利
+    # setting.addParameter('atrLength', 11, 20, 1)    # 增加第一个优化参数atrLength，起始11，结束12，步进1
+    # setting.addParameter('atrMa', 20, 30, 5)        # 增加第二个优化参数atrMa，起始20，结束30，步进1
     
     # 性能测试环境：I7-3770，主频3.4G, 8核心，内存16G，Windows 7 专业版
     # 测试时还跑着一堆其他的程序，性能仅供参考
@@ -284,6 +290,6 @@ if __name__ == '__main__':
     #engine.runOptimization(AtrRsiStrategy, setting)            
     
     # 多进程优化，耗时：89秒
-    engine.runParallelOptimization(AtrRsiStrategy, setting)     
+    #engine.runParallelOptimization(AtrRsiStrategy, setting)
     
-    print u'耗时：%s' %(time.time()-start)
+    print 'Time consumed：%s' %(time.time()-start)

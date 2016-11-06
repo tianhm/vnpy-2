@@ -3,6 +3,9 @@
 '''
 本文件中包含的是CTA模块的回测引擎，回测引擎的API和CTA引擎一致，
 可以使用和实盘相同的代码进行回测。
+
+This file contains backtesting engine for CTA module, the API of backtesing engine is the same as CTA engine.
+Real trading code can be directly used to backtest.
 '''
 from __future__ import division
 
@@ -26,6 +29,9 @@ class BacktestingEngine(object):
     CTA回测引擎
     函数接口和策略引擎保持一样，
     从而实现同一套代码从回测到实盘。
+
+    CTA backtest engine
+    function port is designed to be the same as CTA engine, which allow using the same code to do both tasks.
     """
     
     TICK_MODE = 'tick'
@@ -35,34 +41,40 @@ class BacktestingEngine(object):
     def __init__(self):
         """Constructor"""
         # 本地停止单编号计数
+        # count local stop orders
         self.stopOrderCount = 0
         # stopOrderID = STOPORDERPREFIX + str(stopOrderCount)
         
         # 本地停止单字典
         # key为stopOrderID，value为stopOrder对象
+
+        # Dictionary: local stop orders
+        # key: stopOrderID; value: stopOrder
         self.stopOrderDict = {}             # 停止单撤销后不会从本字典中删除
         self.workingStopOrderDict = {}      # 停止单撤销后会从本字典中删除
         
         # 引擎类型为回测
+        # set engine type as "backtest"
         self.engineType = ENGINETYPE_BACKTESTING
         
         # 回测相关
-        self.strategy = None        # 回测策略
-        self.mode = self.BAR_MODE   # 回测模式，默认为K线
+        # Backtest variables setting
+        self.strategy = None        # define strategy variable
+        self.mode = self.BAR_MODE   # define backtest mode, set "bar" as default
         
         self.startDate = ''
-        self.initDays = 0        
+        self.initDays = 0           # The data used to initialise strategy (not calculate)
         self.endDate = ''
 
-        self.slippage = 0           # 回测时假设的滑点
-        self.rate = 0               # 回测时假设的佣金比例（适用于百分比佣金）
-        self.size = 1               # 合约大小，默认为1        
+        self.slippage = 0           # set slippage
+        self.rate = 0               # set commission (percentage rate)
+        self.size = 1               # position size, set "1" as default
         
-        self.dbClient = None        # 数据库客户端
-        self.dbCursor = None        # 数据库指针
+        self.dbClient = None        # Database Client
+        self.dbCursor = None        # Databse cursor
         
         #self.historyData = []       # 历史数据的列表，回测用
-        self.initData = []          # 初始化用的数据
+        self.initData = []          # The data used to initialise strategy
         #self.backtestingData = []   # 回测用的数据
         
         self.dbName = ''            # 回测数据库名
@@ -71,7 +83,8 @@ class BacktestingEngine(object):
         self.dataStartDate = None       # 回测数据开始日期，datetime对象
         self.dataEndDate = None         # 回测数据结束日期，datetime对象
         self.strategyStartDate = None   # 策略启动日期（即前面的数据用于初始化），datetime对象
-        
+
+        # OrderedDict is a dictionary that is forced to follow a specific order
         self.limitOrderDict = OrderedDict()         # 限价单字典
         self.workingLimitOrderDict = OrderedDict()  # 活动限价单字典，用于进行撮合用
         self.limitOrderCount = 0                    # 限价单编号
@@ -89,17 +102,23 @@ class BacktestingEngine(object):
     #----------------------------------------------------------------------
     def setStartDate(self, startDate='20100416', initDays=10):
         """设置回测的启动日期"""
+        """set start date"""
+
         self.startDate = startDate
         self.initDays = initDays
         
         self.dataStartDate = datetime.strptime(startDate, '%Y%m%d')
         
         initTimeDelta = timedelta(initDays)
+
+        # the real start date = start date + initial days
         self.strategyStartDate = self.dataStartDate + initTimeDelta
         
     #----------------------------------------------------------------------
     def setEndDate(self, endDate=''):
         """设置回测的结束日期"""
+        """set end date"""
+
         self.endDate = endDate
         if endDate:
             self.dataEndDate= datetime.strptime(endDate, '%Y%m%d')
@@ -109,61 +128,79 @@ class BacktestingEngine(object):
     #----------------------------------------------------------------------
     def setBacktestingMode(self, mode):
         """设置回测模式"""
+        """set backtest mode"""
+
+        # "Bar" or "Tick"
         self.mode = mode
     
     #----------------------------------------------------------------------
     def setDatabase(self, dbName, symbol):
         """设置历史数据所用的数据库"""
-        self.dbName = dbName
-        self.symbol = symbol
+        """set database that provide historical data"""
+
+        self.dbName      = dbName
+        self.symbol      = symbol
     
     #----------------------------------------------------------------------
     def loadHistoryData(self):
         """载入历史数据"""
+        """load historical data"""
+
         host, port = loadMongoSetting()
         
         self.dbClient = pymongo.MongoClient(host, port)
-        collection = self.dbClient[self.dbName][self.symbol]          
+        collection = self.dbClient[self.dbName][self.symbol]
 
-        self.output(u'开始载入数据')
+        self.output("Start loading historical data")
       
         # 首先根据回测模式，确认要使用的数据类
+        # Choose data type based on backtest mode
         if self.mode == self.BAR_MODE:
             dataClass = CtaBarData
-            func = self.newBar
         else:
             dataClass = CtaTickData
-            func = self.newTick
 
         # 载入初始化需要用的数据
+        # Load initialised data
+
+        # $gte means "greater and equal to"
+        # $lt means "less than"
         flt = {'datetime':{'$gte':self.dataStartDate,
                            '$lt':self.strategyStartDate}}        
         initCursor = collection.find(flt)
         
         # 将数据从查询指针中读取出，并生成列表
-        self.initData = []              # 清空initData列表
+        # Read data from cursor, generate a list
+        self.initData = []                                      # Empty "initData" list
         for d in initCursor:
             data = dataClass()
             data.__dict__ = d
-            self.initData.append(data)      
+            self.initData.append(data)
         
         # 载入回测数据
+        # Load backtest data (exclude initialised data)
         if not self.dataEndDate:
-            flt = {'datetime':{'$gte':self.strategyStartDate}}   # 数据过滤条件
+
+            # If "End Date" is not set, retreat data up to today
+            flt = {'datetime':{'$gte':self.strategyStartDate}}
         else:
             flt = {'datetime':{'$gte':self.strategyStartDate,
                                '$lte':self.dataEndDate}}  
         self.dbCursor = collection.find(flt)
         
-        self.output(u'载入完成，数据量：%s' %(initCursor.count() + self.dbCursor.count()))
+        self.output("Data loading complete, data volumn: %s" %(initCursor.count() + self.dbCursor.count()))
         
     #----------------------------------------------------------------------
     def runBacktesting(self):
         """运行回测"""
+        """Run backtesting"""
+
         # 载入历史数据
+        # Load historical data
         self.loadHistoryData()
         
         # 首先根据回测模式，确认要使用的数据类
+        # First, choose data class and data update function (Bar or Tick) based on backtest mode
         if self.mode == self.BAR_MODE:
             dataClass = CtaBarData
             func = self.newBar
@@ -171,30 +208,37 @@ class BacktestingEngine(object):
             dataClass = CtaTickData
             func = self.newTick
 
-        self.output(u'开始回测')
+        self.output("Start backtesing!")
         
         self.strategy.inited = True
         self.strategy.onInit()
-        self.output(u'策略初始化完成')
+        self.output("Strategy initialsing complete")
         
         self.strategy.trading = True
         self.strategy.onStart()
-        self.output(u'策略启动完成')
+        self.output("Strategy started")
         
-        self.output(u'开始回放数据')
+        self.output("Processing historical data...")
 
         for d in self.dbCursor:
             data = dataClass()
             data.__dict__ = d
             func(data)     
             
-        self.output(u'数据回放结束')
+        self.output("No more historical data")
         
+    #----------------------------------------------------------------------
+    def updatePosition(self):
+        """Update position information"""
+        pass
+
     #----------------------------------------------------------------------
     def newBar(self, bar):
         """新的K线"""
+        """new ohlc Bar"""
         self.bar = bar
         self.dt = bar.datetime
+        self.updatePosition()       # Update total position value based on new Bar
         self.crossLimitOrder()      # 先撮合限价单
         self.crossStopOrder()       # 再撮合停止单
         self.strategy.onBar(bar)    # 推送K线到策略中
@@ -202,6 +246,7 @@ class BacktestingEngine(object):
     #----------------------------------------------------------------------
     def newTick(self, tick):
         """新的Tick"""
+        """new Tick"""
         self.tick = tick
         self.dt = tick.datetime
         self.crossLimitOrder()
@@ -213,6 +258,9 @@ class BacktestingEngine(object):
         """
         初始化策略
         setting是策略的参数设置，如果使用类中写好的默认设置则可以不传该参数
+
+        Initialise Strategy
+        'setting' is the configuration of strategy, if default setting is adopted, no need to pass this parameter.
         """
         self.strategy = strategyClass(self, setting)
         self.strategy.name = self.strategy.className
@@ -220,6 +268,8 @@ class BacktestingEngine(object):
     #----------------------------------------------------------------------
     def sendOrder(self, vtSymbol, orderType, price, volume, strategy):
         """发单"""
+        """send order"""
+
         self.limitOrderCount += 1
         orderID = str(self.limitOrderCount)
         
@@ -227,12 +277,12 @@ class BacktestingEngine(object):
         order.vtSymbol = vtSymbol
         order.price = price
         order.totalVolume = volume
-        order.status = STATUS_NOTTRADED     # 刚提交尚未成交
+        order.status = STATUS_NOTTRADED         # the status of new limit order is not traded
         order.orderID = orderID
         order.vtOrderID = orderID
         order.orderTime = str(self.dt)
         
-        # CTA委托类型映射
+        # CTA order type
         if orderType == CTAORDER_BUY:
             order.direction = DIRECTION_LONG
             order.offset = OFFSET_OPEN
@@ -246,7 +296,7 @@ class BacktestingEngine(object):
             order.direction = DIRECTION_LONG
             order.offset = OFFSET_CLOSE     
         
-        # 保存到限价单字典中
+        # record this order to "limit order dictionary" and "working limit order dictionary"
         self.workingLimitOrderDict[orderID] = order
         self.limitOrderDict[orderID] = order
         
@@ -255,6 +305,8 @@ class BacktestingEngine(object):
     #----------------------------------------------------------------------
     def cancelOrder(self, vtOrderID):
         """撤单"""
+        """cancel order"""
+
         if vtOrderID in self.workingLimitOrderDict:
             order = self.workingLimitOrderDict[vtOrderID]
             order.status = STATUS_CANCELLED
@@ -264,6 +316,8 @@ class BacktestingEngine(object):
     #----------------------------------------------------------------------
     def sendStopOrder(self, vtSymbol, orderType, price, volume, strategy):
         """发停止单（本地实现）"""
+        """send StopOrder"""
+
         self.stopOrderCount += 1
         stopOrderID = STOPORDERPREFIX + str(self.stopOrderCount)
         
@@ -288,7 +342,8 @@ class BacktestingEngine(object):
             so.direction = DIRECTION_LONG
             so.offset = OFFSET_CLOSE           
         
-        # 保存stopOrder对象到字典中
+        # 保存StopOrder对象到字典中
+        # Record this StopOrder to 2 dictionary
         self.stopOrderDict[stopOrderID] = so
         self.workingStopOrderDict[stopOrderID] = so
         
@@ -297,7 +352,10 @@ class BacktestingEngine(object):
     #----------------------------------------------------------------------
     def cancelStopOrder(self, stopOrderID):
         """撤销停止单"""
+        """cancel StopOrder"""
+
         # 检查停止单是否存在
+        # Check whether this StopOrder exists
         if stopOrderID in self.workingStopOrderDict:
             so = self.workingStopOrderDict[stopOrderID]
             so.status = STOPORDER_CANCELLED
@@ -306,6 +364,8 @@ class BacktestingEngine(object):
     #----------------------------------------------------------------------
     def crossLimitOrder(self):
         """基于最新数据撮合限价单"""
+        """Check LimitOrder base on newest market data"""
+
         # 先确定会撮合成交的价格
         if self.mode == self.BAR_MODE:
             buyCrossPrice = self.bar.low        # 若买入方向限价单价格高于该价格，则会成交
@@ -325,9 +385,11 @@ class BacktestingEngine(object):
             sellCross = order.direction==DIRECTION_SHORT and order.price<=sellCrossPrice
             
             # 如果发生了成交
+            # If transaction happens
             if buyCross or sellCross:
                 # 推送成交数据
-                self.tradeCount += 1            # 成交编号自增1
+                # Update trade data
+                self.tradeCount += 1            # TradeID increase by 1
                 tradeID = str(self.tradeCount)
                 trade = VtTradeData()
                 trade.vtSymbol = order.vtSymbol
@@ -338,10 +400,11 @@ class BacktestingEngine(object):
                 trade.direction = order.direction
                 trade.offset = order.offset
                 
-                # 以买入为例：
-                # 1. 假设当根K线的OHLC分别为：100, 125, 90, 110
-                # 2. 假设在上一根K线结束(也是当前K线开始)的时刻，策略发出的委托为限价105
-                # 3. 则在实际中的成交价会是100而不是105，因为委托发出时市场的最优价格是100
+                # Buy as example:
+                # 1. Suppose the OHLC of current Bar are 100, 125, 90, 110 (Open = 100)
+                # 2. Suppose at the end of last Bar(not the start of current Bar), the price of limit order is 105,
+                #    (Last Close = 105)
+                # 3. In real trading, the trade price will be 100 instead of 105, because the best market price is 100
                 if buyCross:
                     trade.price = min(order.price, buyBestCrossPrice)
                     self.strategy.pos += order.totalVolume
@@ -357,11 +420,13 @@ class BacktestingEngine(object):
                 self.tradeDict[tradeID] = trade
                 
                 # 推送委托数据
+                # Upadte order data
                 order.tradedVolume = order.totalVolume
                 order.status = STATUS_ALLTRADED
                 self.strategy.onOrder(order)
                 
                 # 从字典中删除该限价单
+                # Remove this order from "working limit order dictionary"
                 del self.workingLimitOrderDict[orderID]
                 
     #----------------------------------------------------------------------
@@ -466,17 +531,22 @@ class BacktestingEngine(object):
     def calculateBacktestingResult(self):
         """
         计算回测结果
+
+        Calculate backtesting result
         """
-        self.output(u'计算回测结果')
+
+        self.output("Calculating backtesting result")
         
         # 首先基于回测后的成交记录，计算每笔交易的盈亏
+        # First, based on trade lists, calculate profit/loss for each trade
+
         resultList = []             # 交易结果列表
         
         longTrade = []              # 未平仓的多头交易
         shortTrade = []             # 未平仓的空头交易
         
         for trade in self.tradeDict.values():
-            # 多头交易
+            # Long Trades
             if trade.direction == DIRECTION_LONG:
                 # 如果尚无空头交易
                 if not shortTrade:
@@ -560,7 +630,7 @@ class BacktestingEngine(object):
                     
         # 检查是否有交易
         if not resultList:
-            self.output(u'无交易结果')
+            self.output("No trade has been recorded")
             return {}
         
         # 然后基于每笔交易的结果，我们可以计算具体的盈亏曲线和最大回撤等        
@@ -646,38 +716,53 @@ class BacktestingEngine(object):
         
         # 输出
         self.output('-' * 30)
-        self.output(u'第一笔交易：\t%s' % d['timeList'][0])
-        self.output(u'最后一笔交易：\t%s' % d['timeList'][-1])
+        self.output('First Trade：\t%s' % d['timeList'][0])
+        self.output('Last Trade：\t%s' % d['timeList'][-1])
         
-        self.output(u'总交易次数：\t%s' % formatNumber(d['totalResult']))        
-        self.output(u'总盈亏：\t%s' % formatNumber(d['capital']))
-        self.output(u'最大回撤: \t%s' % formatNumber(min(d['drawdownList'])))                
+        self.output('Total Trades：\t%s' % formatNumber(d['totalResult']))
+        self.output('Total Return：\t%s' % formatNumber(d['capital']))
+        self.output('Maximum Drawdown: \t%s' % formatNumber(min(d['drawdownList'])))
         
-        self.output(u'平均每笔盈利：\t%s' %formatNumber(d['capital']/d['totalResult']))
-        self.output(u'平均每笔滑点：\t%s' %formatNumber(d['totalSlippage']/d['totalResult']))
-        self.output(u'平均每笔佣金：\t%s' %formatNumber(d['totalCommission']/d['totalResult']))
+        self.output('Ave Trade：\t%s' %formatNumber(d['capital']/d['totalResult']))
+        self.output('Ave Slippage：\t%s' %formatNumber(d['totalSlippage']/d['totalResult']))
+        self.output('Ave Commission：\t%s' %formatNumber(d['totalCommission']/d['totalResult']))
         
-        self.output(u'胜率\t\t%s%%' %formatNumber(d['winningRate']))
-        self.output(u'平均每笔盈利\t%s' %formatNumber(d['averageWinning']))
-        self.output(u'平均每笔亏损\t%s' %formatNumber(d['averageLosing']))
-        self.output(u'盈亏比：\t%s' %formatNumber(d['profitLossRatio']))
+        self.output('Win Ratio\t\t%s%%' %formatNumber(d['winningRate']))
+        self.output('Ave Win\t%s' %formatNumber(d['averageWinning']))
+        self.output('Ave Loss\t%s' %formatNumber(d['averageLosing']))
+        self.output('Profit Factor：\t%s' %formatNumber(d['profitLossRatio']))
     
-        # 绘图
-        import matplotlib.pyplot as plt
-        
-        pCapital = plt.subplot(3, 1, 1)
-        pCapital.set_ylabel("capital")
-        pCapital.plot(d['capitalList'])
-        
-        pDD = plt.subplot(3, 1, 2)
-        pDD.set_ylabel("DD")
-        pDD.bar(range(len(d['drawdownList'])), d['drawdownList'])         
-        
-        pPnl = plt.subplot(3, 1, 3)
-        pPnl.set_ylabel("pnl")
-        pPnl.hist(d['pnlList'], bins=50)
-        
-        plt.show()
+        # Use Bokeh to plot
+        from bokeh.charts import Area, Line, Histogram
+        from bokeh.layouts import column
+        from bokeh.io import show
+
+        plotdata = {"TradeN": range(len(d['capitalList'])),
+                    "Equity Curve": d['capitalList'],
+                    "Maximum Drawdown": d['drawdownList'],
+                    "Profit/Loss": d['pnlList']}
+
+        f1 = Line(plotdata,x="TradeN",y="Equity Curve",color="blue",width=1000,height=300)
+        f2 = Area(plotdata,x="TradeN",y="Maximum Drawdown",color="tomato",width=1000,height=300)
+        f3 = Histogram(plotdata,values="Profit/Loss",bins=30,color="green",width=1000,height=300)
+
+
+        show(column(f1,f2,f3))
+
+        # import matplotlib.pyplot as plt
+        # pCapital = plt.subplot(3, 1, 1)
+        # pCapital.set_ylabel("capital")
+        # pCapital.plot(d['capitalList'])
+        #
+        # pDD = plt.subplot(3, 1, 2)
+        # pDD.set_ylabel("DD")
+        # pDD.bar(range(len(d['drawdownList'])), d['drawdownList'])
+        #
+        # pPnl = plt.subplot(3, 1, 3)
+        # pPnl.set_ylabel("pnl")
+        # pPnl.hist(d['pnlList'], bins=50)
+        #
+        # plt.show()
     
     #----------------------------------------------------------------------
     def putStrategyEvent(self, name):
@@ -695,7 +780,7 @@ class BacktestingEngine(object):
         self.size = size
         
     #----------------------------------------------------------------------
-    def setRate(self, rate):
+    def setCommission(self, rate):
         """设置佣金比例"""
         self.rate = rate
 
@@ -896,26 +981,31 @@ if __name__ == '__main__':
     # 建议使用ipython notebook或者spyder来做回测
     # 同样可以在命令模式下进行回测（一行一行输入运行）
     from ctaDemo import *
-    
-    # 创建回测引擎
-    engine = BacktestingEngine()
-    
-    # 设置引擎的回测模式为K线
-    engine.setBacktestingMode(engine.BAR_MODE)
 
-    # 设置回测用的数据起始日期
-    engine.setStartDate('20110101')
-    
-    # 载入历史数据到引擎中
+    '''
+    创建回测引擎
+    设置引擎的回测模式为K线
+    设置回测用的数据起始日期
+    载入历史数据到引擎中
+    在引擎中创建策略对象
+
+    Create backtesting engine
+    Set backtest mode as "Bar"
+    Set "Start Date" of data range
+    Load historical data to engine
+    Create strategy instance in engine
+    '''
+    engine = BacktestingEngine()
+    engine.setBacktestingMode(engine.BAR_MODE)
+    engine.setStartDate('20140101')
     engine.setDatabase(MINUTE_DB_NAME, 'IF0000')
+    engine.initStrategy(DoubleEmaDemo, {})
     
     # 设置产品相关参数
+    # Set relevant parameters
     engine.setSlippage(0.2)     # 股指1跳
-    engine.setRate(0.3/10000)   # 万0.3
-    engine.setSize(300)         # 股指合约大小    
-    
-    # 在引擎中创建策略对象
-    engine.initStrategy(DoubleEmaDemo, {})
+    engine.setCommission(0.3/10000)   # 万0.3
+    engine.setSize(300)         # 股指合约大小
     
     # 开始跑回测
     engine.runBacktesting()
