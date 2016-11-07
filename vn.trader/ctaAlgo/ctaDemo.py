@@ -130,7 +130,7 @@ class DoubleEmaDemo(CtaTemplate):
             bar.close = tick.lastPrice
         
     #----------------------------------------------------------------------
-    def onBar(self, bar):
+    def onBar(self, bar, **kwargs):
         """收到Bar推送（必须由用户继承实现）"""
         # 计算快慢均线
         if not self.fastMa0:        

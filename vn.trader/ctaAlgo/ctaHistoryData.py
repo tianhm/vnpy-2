@@ -340,6 +340,11 @@ def loadMcCsv(fileName, dbName, symbol):
         bar.close = float(d['Close'])
         bar.date = datetime.strptime(d['Date'], '%Y/%m/%d').strftime('%Y%m%d')
         bar.time = d['Time']
+        """
+        Warnings:
+        We have to use datetime.strptime to insert data, otherwise MongoDB cannot recognise it as a date.
+        Even pandas.to_datetime cannot set it as a ISODate, ISODate is needed while doing indexing.
+        """
         bar.datetime = datetime.strptime(bar.date + ' ' + bar.time, '%Y%m%d %H:%M:%S')
         bar.volume = d['TotalVolume']
 
