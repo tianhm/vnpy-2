@@ -169,7 +169,16 @@ class TC11(CtaTemplate):
 ########################################################################
 class Prototype(AtrRsiStrategy):
 
+    """
+    "infoArray" 字典是用来储存辅助品种信息的, 可以是同品种的不同分钟k线, 也可以是不同品种的价格。
+
+    调用的方法:
+    self.infoArray["数据库名 + 空格 + collection名"]["close"]
+    self.infoArray["数据库名 + 空格 + collection名"]["high"]
+    self.infoArray["数据库名 + 空格 + collection名"]["low"]
+    """
     infoArray = {}
+    initInfobar = {}
 
     def __int__(self):
         super(Prototype, self).__int__()
@@ -186,46 +195,95 @@ class Prototype(AtrRsiStrategy):
         # 载入历史数据，并采用回放计算的方式初始化策略数值
         initData = self.loadBar(self.initDays)
         for bar in initData:
-            self.onBar(bar)
+
+            # 推送新数据, 同时检查是否有information bar需要推送
+            # Update new bar, check whether the Time Stamp matching any information bar
+            ibar = self.checkInfoBar(bar)
+            self.onBar(bar, infobar=ibar)
 
         self.putEvent()
+
+    # ----------------------------------------------------------------------
+    def checkInfoBar(self, bar):
+        """在初始化时, 检查辅助品种数据的推送(初始化结束后, 回测时不会调用)"""
+
+        initInfoCursorDict = self.ctaEngine.initInfoCursor
+
+        # 如果"initInfobar"字典为空, 初始化字典, 插入第一个数据
+        # If dictionary "initInfobar" is empty, insert first data record
+        if self.initInfobar == {}:
+            for info_symbol in initInfoCursorDict:
+                try:
+                    self.initInfobar[info_symbol] = next(initInfoCursorDict[info_symbol])
+                except StopIteration:
+                    print "Data of information symbols is empty! Input is a list, not str."
+                    raise
+
+        # 若有某一品种的 TimeStamp 和执行报价的 TimeStamp 匹配, 则将"initInfobar"中的数据推送,
+        # 然后更新该品种的数据
+        # If any symbol's TimeStamp is matched with execution symbol's TimeStamp, return data
+        # in "initInfobar", and update new data.
+        temp = {}
+        for info_symbol in self.initInfobar:
+
+            data = self.initInfobar[info_symbol]
+
+            # Update data only when Time Stamp is matched
+            if data['datetime'] <= bar.datetime:
+                try:
+                    temp[info_symbol] = CtaBarData()
+                    temp[info_symbol].__dict__ = data
+                    self.initInfobar[info_symbol] = next(initInfoCursorDict[info_symbol])
+                except StopIteration:
+                    self.ctaEngine.output("No more data for initializing %s." % (info_symbol,))
+            else:
+                temp[info_symbol] = None
+
+        return temp
+
+    # ----------------------------------------------------------------------
+    def updateInfoArray(self, infobar):
+        """收到Infomation Data, 更新辅助品种缓存字典"""
+
+        for name in infobar:
+
+            data = infobar[name]
+
+            # Construct empty array
+            if len(self.infoArray) < len(infobar) :
+                self.infoArray[name] = {
+                    "close": np.zeros(self.bufferSize),
+                    "high": np.zeros(self.bufferSize),
+                    "low": np.zeros(self.bufferSize)
+                }
+
+            if data is None:
+                pass
+
+            else:
+                self.infoArray[name]["close"][0:self.bufferSize - 1] = \
+                    self.infoArray[name]["close"][1:self.bufferSize]
+                self.infoArray[name]["high"][0:self.bufferSize - 1] = \
+                    self.infoArray[name]["high"][1:self.bufferSize]
+                self.infoArray[name]["low"][0:self.bufferSize - 1] = \
+                    self.infoArray[name]["low"][1:self.bufferSize]
+
+                self.infoArray[name]["close"][-1] = data.close
+                self.infoArray[name]["high"][-1] = data.high
+                self.infoArray[name]["low"][-1] = data.low
 
     # ----------------------------------------------------------------------
     def onBar(self, bar, **kwargs):
         """收到Bar推送（必须由用户继承实现）"""
         # 撤销之前发出的尚未成交的委托（包括限价单和停止单）
-        if "infobar" in kwargs:
-
-            for name in kwargs["infobar"]:
-
-                data = kwargs["infobar"][name]
-
-                # Initialize infomation data
-                if self.infoArray == {}:
-                    self.infoArray[name] = {
-                        "close" :np.zeros(self.bufferSize),
-                        "high"  :np.zeros(self.bufferSize),
-                        "low"   :np.zeros(self.bufferSize)
-                    }
-
-                if data is None:
-                    pass
-
-                else:
-                    self.infoArray[name]["close"][0:self.bufferSize - 1] = \
-                        self.infoArray[name]["close"][1:self.bufferSize]
-                    self.infoArray[name]["high"][0:self.bufferSize - 1] = \
-                        self.infoArray[name]["high"][1:self.bufferSize]
-                    self.infoArray[name]["low"][0:self.bufferSize - 1] = \
-                        self.infoArray[name]["low"][1:self.bufferSize]
-
-                    self.infoArray[name]["close"][-1] = data.close
-                    self.infoArray[name]["high"][-1] = data.high
-                    self.infoArray[name]["low"][-1] = data.low
-
         for orderID in self.orderList:
             self.cancelOrder(orderID)
         self.orderList = []
+
+        # Update infomation data
+        # "infobar"是由不同时间或不同品种的品种数据组成的字典, 如果和执行品种的 TimeStamp 不匹配,
+        # 则传入的是"None", 当time stamp和执行品种匹配时, 传入的是"Bar"
+        self.updateInfoArray(kwargs["infobar"])
 
         # 保存K线数据
         self.closeArray[0:self.bufferSize - 1] = self.closeArray[1:self.bufferSize]
@@ -236,49 +294,52 @@ class Prototype(AtrRsiStrategy):
         self.highArray[-1] = bar.high
         self.lowArray[-1] = bar.low
 
+        # 若读取的缓存数据不足, 不考虑交易
         self.bufferCount += 1
         if self.bufferCount < self.bufferSize:
             return
 
         # 计算指标数值
-        # self.STFatrValue = talib.abstract.ATR(
-        #     self.infoArray["@GC_30M"]
-        # )
-        # print self.STFatrValue
 
-        self.atrValue = talib.ATR(self.highArray,
-                                  self.lowArray,
-                                  self.closeArray,
-                                  self.atrLength)[-1]
-        self.atrArray[0:self.bufferSize - 1] = self.atrArray[1:self.bufferSize]
-        self.atrArray[-1] = self.atrValue
+        # 计算不同时间下的ATR数值
+
+        # Only trading when information bar changes
+        # 只有在30min或者1d K线更新后才可以交易
+        TradeOn = False
+        if any([i is not None for i in kwargs["infobar"].values()]):
+
+            TradeOn = True
+            self.scaledAtrValue1M = talib.ATR(self.highArray,
+                                       self.lowArray,
+                                       self.closeArray,
+                                       self.atrLength)[-1] * (25) ** (0.5)
+            self.atrValue30M = talib.abstract.ATR(self.infoArray["TestData @GC_30M"])[-1]
+            self.rsiValue = talib.abstract.RSI(self.infoArray["TestData @GC_30M"], self.rsiLength)[-1]
 
         self.atrCount += 1
         if self.atrCount < self.bufferSize:
             return
 
-        self.atrMa = talib.MA(self.atrArray,
-                              self.atrMaLength)[-1]
-        self.rsiValue = talib.RSI(self.closeArray,
-                                  self.rsiLength)[-1]
-
         # 判断是否要进行交易
 
         # 当前无仓位
-        if self.pos == 0:
+        if (self.pos == 0 and TradeOn == True):
             self.intraTradeHigh = bar.high
             self.intraTradeLow = bar.low
 
-            # ATR数值上穿其移动平均线，说明行情短期内波动加大
+            # 1Min调整后ATR大于30MinATR
             # 即处于趋势的概率较大，适合CTA开仓
-            if self.atrValue > self.atrMa:
+            if self.atrValue30M < self.scaledAtrValue1M:
                 # 使用RSI指标的趋势行情时，会在超买超卖区钝化特征，作为开仓信号
                 if self.rsiValue > self.rsiBuy:
                     # 这里为了保证成交，选择超价5个整指数点下单
-                    self.buy(bar.close + 5, 1)
+                    self.buy(bar.close+5, 1)
 
                 elif self.rsiValue < self.rsiSell:
-                    self.short(bar.close - 5, 1)
+                    self.short(bar.close-5, 1)
+
+                # 下单后, 在下一个30Min K线之前不交易
+                TradeOn = False
 
         # 持有多头仓位
         elif self.pos > 0:
@@ -326,8 +387,9 @@ if __name__ == '__main__':
     '''
     engine = BacktestEngineMultiTF()
     engine.setBacktestingMode(engine.BAR_MODE)
-    engine.setStartDate('20150101')
-    engine.setDatabase("TestData", "@GC_1M", info_symbol=["@GC_30M"])
+    engine.setStartDate('20100101')
+    engine.setDatabase("TestData", "@GC_1M", info_symbol=[("TestData","@GC_30M")])
+
     # Set parameters for strategy
     d = {'atrLength': 11}
     engine.initStrategy(Prototype, d)
@@ -344,21 +406,5 @@ if __name__ == '__main__':
 
     # 显示回测结果
     engine.showBacktestingResult()
-
-    # 跑优化
-    # setting = OptimizationSetting()                 # 新建一个优化任务设置对象
-    # setting.setOptimizeTarget('capital')            # 设置优化排序的目标是策略净盈利
-    # setting.addParameter('atrLength', 11, 20, 1)    # 增加第一个优化参数atrLength，起始11，结束12，步进1
-    # setting.addParameter('atrMa', 20, 30, 5)        # 增加第二个优化参数atrMa，起始20，结束30，步进1
-
-    # 性能测试环境：I7-3770，主频3.4G, 8核心，内存16G，Windows 7 专业版
-    # 测试时还跑着一堆其他的程序，性能仅供参考
-
-
-    # 运行单进程优化函数，自动输出结果，耗时：359秒
-    # engine.runOptimization(AtrRsiStrategy, setting)
-
-    # 多进程优化，耗时：89秒
-    # engine.runParallelOptimization(AtrRsiStrategy, setting)
 
     print 'Time consumed：%s' % (time.time() - start)

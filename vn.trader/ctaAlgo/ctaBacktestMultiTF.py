@@ -1,22 +1,13 @@
 # encoding: UTF-8
 
 '''
+这个文件加入在CTA回测引擎的基础上加入了辅助品种信息, 保持接口的一致, 可以在原CTA引擎上执行的代码,
+也可以在这个引擎上执行
 This file add multi Time Frame functionalities to CTA backtesting engine, the APIs are the
 same as CTA engine. Real trading code can be directly used for backtesting.
 '''
-from __future__ import division
 
-# from datetime import datetime, timedelta
-# from collections import OrderedDict
-# from itertools import product
-# import multiprocessing
-import pymongo
-#
-from ctaBase import *
-# from ctaSetting import *
-#
-# from vtConstant import *
-# from vtGateway import VtOrderData, VtTradeData
+from __future__ import division
 from vtFunction import loadMongoSetting
 
 from ctaBacktesting import *
@@ -25,13 +16,13 @@ class BacktestEngineMultiTF(BacktestingEngine):
 
     def __init__(self):
         """Constructor"""
-
         super(BacktestEngineMultiTF, self).__init__()
 
-        self.info_symbols = []
-        self.infodbCursor = {}
-        self.infobar      = {}
-        self.MultiOn      = False
+        self.info_symbols   = []        # List, 输入辅助品种的2值tuple, 左边为数据库名, 右边为collection名
+        self.InfoCursor     = {}        # Dict, 放置回测用辅助品种数据库
+        self.initInfoCursor = {}        # Dict, 放置初始化用辅助品种数据库
+        self.infobar        = {}        # Dict, 放置辅助品种最新一个K线数据
+        self.MultiOn        = False     # Boolean, 判断是否传入了辅助品种
 
     # ----------------------------------------------------------------------
     def setDatabase(self, dbName, symbol, **kwargs):
@@ -44,8 +35,9 @@ class BacktestEngineMultiTF(BacktestingEngine):
         if "info_symbol" in kwargs:
             self.info_symbols = kwargs["info_symbol"]
 
+            # Turn on MultiTF switch
             if len(self.info_symbols) > 0:
-                self.MultiOn == True
+                self.MultiOn = True
 
     # ----------------------------------------------------------------------
     def loadInitData(self, collection, **kwargs):
@@ -59,9 +51,16 @@ class BacktestEngineMultiTF(BacktestingEngine):
                             '$lt': self.strategyStartDate}}
         self.initCursor = collection.find(flt)
 
+        # 初始化辅助品种数据
+        # Initializing information data
+        if "inf" in kwargs:
+            for name in kwargs["inf"]:
+                DB = kwargs["inf"][name]
+                self.initInfoCursor[name] = DB.find(flt)
+
         # 将数据从查询指针中读取出，并生成列表
         # Read data from cursor, generate a list
-        self.initData = []       # Empty "initData" list
+        self.initData = []
 
         for d in self.initCursor:
             data = self.dataClass()
@@ -78,11 +77,12 @@ class BacktestEngineMultiTF(BacktestingEngine):
         self.dbClient = pymongo.MongoClient(host, port)
         collection = self.dbClient[self.dbName][self.symbol]
 
-        # Load historical data of information symbols
+        # Load historical data of information symbols, construct a dictionary of Database
+        # Values of dictionary are mongo.Client.
         info_collection = {}
         if self.MultiOn is True:
-            for info_symbol in self.info_symbols:
-                info_collection[info_symbol] = self.dbClient[self.dbName][info_symbol]
+            for DBname, symbol in self.info_symbols:
+                info_collection[DBname + " " + symbol] = self.dbClient[DBname][symbol]
 
         self.output("Start loading historical data")
 
@@ -99,7 +99,7 @@ class BacktestEngineMultiTF(BacktestingEngine):
         self.loadInitData(collection, inf=info_collection)
 
         # 载入回测数据
-        # Load backtest data (exclude initialised data)
+        # Load backtest data (exclude initializing data)
         if not self.dataEndDate:
             # If "End Date" is not set, retreat data up to today
             flt = {'datetime': {'$gte': self.strategyStartDate}}
@@ -110,10 +110,10 @@ class BacktestEngineMultiTF(BacktestingEngine):
 
         if self.MultiOn is True:
             for db in info_collection:
-                self.infodbCursor[db] = info_collection[db].find(flt)
-                self.output(
-                    "Data loading completed, data volumn: %s" % (self.initCursor.count() + self.dbCursor.count() + \
-                                                                 sum([i.count() for i in self.infodbCursor.values()])))
+                self.InfoCursor[db] = info_collection[db].find(flt)
+            self.output(
+                "Data loading completed, data volumn: %s" % (self.initCursor.count() + self.dbCursor.count() + \
+                                                             sum([i.count() for i in self.InfoCursor.values()])))
         else:
             self.output("Data loading completed, data volumn: %s" % (self.initCursor.count() + self.dbCursor.count()))
 
@@ -139,10 +139,11 @@ class BacktestEngineMultiTF(BacktestingEngine):
         self.output("Processing historical data...")
 
         dataClass = self.dataClass
+        func = self.func
         for d in self.dbCursor:
             data = dataClass()
             data.__dict__ = d
-            self.func(data)
+            func(data)
 
         self.output("No more historical data")
 
@@ -150,10 +151,11 @@ class BacktestEngineMultiTF(BacktestingEngine):
     def checkInformationData(self):
         """Update information symbols' data"""
 
+        # If infobar is empty, which means it is the first time calling this method
         if self.infobar == {}:
-            for info_symbol in self.infodbCursor:
+            for info_symbol in self.InfoCursor:
                 try:
-                    self.infobar[info_symbol] = next(self.infodbCursor[info_symbol])
+                    self.infobar[info_symbol] = next(self.InfoCursor[info_symbol])
                 except StopIteration:
                     print "Data of information symbols is empty! Input must be a list, not str."
                     raise
@@ -168,7 +170,7 @@ class BacktestEngineMultiTF(BacktestingEngine):
                 try:
                     temp[info_symbol] = CtaBarData()
                     temp[info_symbol].__dict__ = data
-                    self.infobar[info_symbol] = next(self.infodbCursor[info_symbol])
+                    self.infobar[info_symbol] = next(self.InfoCursor[info_symbol])
                 except StopIteration:
                     self.output("No more data in information database.")
             else:
@@ -186,9 +188,9 @@ class BacktestEngineMultiTF(BacktestingEngine):
         self.crossLimitOrder()  # 先撮合限价单
         self.crossStopOrder()  # 再撮合停止单
         if self.MultiOn is True:
-            self.strategy.onBar(bar)  # 推送K线到策略中
-        else:
             self.strategy.onBar(bar, infobar=self.checkInformationData())  # 推送K线到策略中
+        else:
+            self.strategy.onBar(bar)  # 推送K线到策略中
 
     # ----------------------------------------------------------------------
     def newTick(self, tick):
@@ -202,41 +204,3 @@ class BacktestEngineMultiTF(BacktestingEngine):
 
 ########################################################################
 
-if __name__ == '__main__':
-    # 以下内容是一段回测脚本的演示，用户可以根据自己的需求修改
-    # 建议使用ipython notebook或者spyder来做回测
-    # 同样可以在命令模式下进行回测（一行一行输入运行）
-    from ctaDemo import *
-
-    '''
-    创建回测引擎
-    设置引擎的回测模式为K线
-    设置回测用的数据起始日期
-    载入历史数据到引擎中
-    在引擎中创建策略对象
-
-    Create backtesting engine
-    Set backtest mode as "Bar"
-    Set "Start Date" of data range
-    Load historical data to engine
-    Create strategy instance in engine
-    '''
-    engine = BacktestEngineMultiTF()
-    engine.setBacktestingMode(engine.BAR_MODE)
-    engine.setStartDate('20140101')
-    engine.setDatabase(MINUTE_DB_NAME, 'IF0000')
-    engine.initStrategy(DoubleEmaDemo, {})
-
-    # 设置产品相关参数
-    # Set relevant parameters
-    engine.setSlippage(0.2)  # 股指1跳
-    engine.setCommission(0.3 / 10000)  # 万0.3
-    engine.setSize(300)  # 股指合约大小
-
-    # 开始跑回测
-    engine.runBacktesting()
-
-    # 显示回测结果
-    # spyder或者ipython notebook中运行时，会弹出盈亏曲线图
-    # 直接在cmd中回测则只会打印一些回测数值
-    engine.showBacktestingResult()

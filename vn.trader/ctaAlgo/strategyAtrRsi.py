@@ -36,7 +36,7 @@ class AtrRsiStrategy(CtaTemplate):
     bar = None                  # K线对象
     barMinute = EMPTY_STRING    # K线当前的分钟
 
-    bufferSize = 100                    # 需要缓存的数据的大小
+    bufferSize = 1000                  # 需要缓存的数据的大小
                                         # Pre-calculation number
     bufferCount = 0                     # 目前已经缓存了的数据的计数
     highArray = np.zeros(bufferSize)    # K线最高价的数组
@@ -258,8 +258,8 @@ if __name__ == '__main__':
     '''
     engine = BacktestingEngine()
     engine.setBacktestingMode(engine.BAR_MODE)
-    engine.setStartDate('20120101')
-    engine.setDatabase(MINUTE_DB_NAME, 'IF0000')
+    engine.setStartDate('20150101')
+    engine.setDatabase("TestData", "@GC_1M")
     # Set parameters for strategy
     d = {'atrLength': 11}
     engine.initStrategy(AtrRsiStrategy, d)
