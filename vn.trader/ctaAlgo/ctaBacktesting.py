@@ -544,7 +544,7 @@ class BacktestingEngine(object):
         
         longTrade = []              # 未平仓的多头交易
         shortTrade = []             # 未平仓的空头交易
-        
+
         for trade in self.tradeDict.values():
             # Long Trades
             if trade.direction == DIRECTION_LONG:
