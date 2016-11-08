@@ -27,11 +27,11 @@ class BreakOut(CtaTemplate):
 
     #----------------------------------------------------------------------
     def __init__(self, ctaEngine, setting):
-        """日内突破交易策略, 出场方式可为止损止盈、时间出场、指标出场, 本文件使用指标出场"""
+        """日内突破交易策略, 出场方式非常多, 本文件使用指标出场"""
 
         className = 'BreakOut'
         author = 'Joe'
-        super(TC11, self).__init__(ctaEngine, setting)
+        super(BreakOut, self).__init__(ctaEngine, setting)
 
         # 设置辅助品种数据字典
         self.infoArray = {}
@@ -45,10 +45,10 @@ class BreakOut(CtaTemplate):
 
         # 设置参数
         self.pOBO_Mult = 0.5        # 计算突破点位
-        self.pProtMult = 2          # 止损的ATR倍数
-        self.pProfitMult = 2        # 止盈相对于止损的倍数
-        self.SlTp_On = False        # 止损止盈功能
-        self.EODTime = 15           # 设置日内平仓时间
+        # self.pProtMult = 2          # 止损的ATR倍数
+        # self.pProfitMult = 2        # 止盈相对于止损的倍数
+        # self.SlTp_On = False        # 止损止盈功能
+        # self.EODTime = 15           # 设置日内平仓时间
 
         self.vOBO_stretch = EMPTY_FLOAT
         self.vOBO_initialpoint = EMPTY_FLOAT
@@ -77,8 +77,6 @@ class BreakOut(CtaTemplate):
     def onInit(self):
         """初始化策略（必须由用户继承实现）"""
         self.writeCtaLog(u'%s策略初始化' % self.name)
-
-        self.SlTp_On = False
 
         # 载入历史数据，并采用回放计算的方式初始化策略数值
         initData = self.loadBar(self.initDays)
@@ -224,61 +222,42 @@ class BreakOut(CtaTemplate):
                 self.cancelOrder(orderID)
             self.orderList = []
 
-            # 若30Min的最高价大于OBO_level_L
-
+            # 若上一个30分钟K线的最高价大于OBO_level_L
+            # 且当前的价格大于OBO_level_L, 则买入
             if self.infoArray["TestData @GC_30M"]["high"][-1] > self.vOBO_level_L:
 
                 if bar.close > self.vOBO_level_L:
 
                     self.buy(bar.close + 0.5, 1)
-                    # 发出本地止损止盈委托，并且把委托号记录下来，用于后续撤单
-                    longStopLoss = bar.close - self.atrValue30M * self.pProtMult
-                    longTakeProfit = bar.close + self.atrValue30M * self.pProtMult * self.pProfitMult
-                    # 设定止损止盈
-                    if self.SlTp_On == True:
-                        orderID = self.sell(longStopLoss, 1, stop=True)
-                        self.orderList.append(orderID)
-                        orderID2 = self.sell(longTakeProfit, 1, stop=False)
-                        self.orderList.append(orderID2)
 
                     # 下单后, 在下一个30Min K线之前不交易
                     TradeOn = False
 
+            # 若上一个30分钟K线的最高价低于OBO_level_S
+            # 且当前的价格小于OBO_level_S, 则卖出
             elif self.infoArray["TestData @GC_30M"]["low"][-1] < self.vOBO_level_S:
 
                 if bar.close < self.vOBO_level_S:
 
                     self.short(bar.close - 0.5, 1)
-                    # 发出本地止损止盈委托，并且把委托号记录下来，用于后续撤单
-                    ShortStopLoss = bar.close + self.atrValue30M * self.pProtMult
-                    ShortTakeProfit = bar.close - self.atrValue30M * self.pProtMult * self.pProfitMult
-                    # 设定止损止盈
-                    if self.SlTp_On == True:
-                        orderID = self.cover(ShortStopLoss, 1, stop=True)
-                        self.orderList.append(orderID)
-                        orderID2 = self.cover(ShortTakeProfit, 1, stop=False)
-                        self.orderList.append(orderID2)
 
                     # 下单后, 在下一个30Min K线之前不交易
                     TradeOn = False
 
-        # 持有仓位
+        # 持有多头仓位
         elif self.pos > 0:
 
+            # 当价格低于initialpoint水平, 出场
             if bar.close < self.vOBO_initialpoint:
                 self.sell(bar.close - 0.5 , 1)
-
-            # if self.ctaEngine.dt.hour > self.EODTime:
-            #     self.sell(bar.close - 0.5, 1)
 
         # 持有空头仓位
         elif self.pos < 0:
 
+            # 当价格高于initialpoint水平, 出场
             if bar.close > self.vOBO_initialpoint:
                 self.cover(bar.close + 0.5, 1)
 
-            # if self.ctaEngine.dt.hour > self.EODTime:
-            #     self.sell(bar.close + 0.5, 1)
 
         # 发出状态更新事件
         self.putEvent()
@@ -291,204 +270,6 @@ class BreakOut(CtaTemplate):
     # ----------------------------------------------------------------------
     def onTrade(self, trade):
         pass
-
-########################################################################
-class Prototype(AtrRsiStrategy):
-
-    """
-    "infoArray" 字典是用来储存辅助品种信息的, 可以是同品种的不同分钟k线, 也可以是不同品种的价格。
-
-    调用的方法:
-    self.infoArray["数据库名 + 空格 + collection名"]["close"]
-    self.infoArray["数据库名 + 空格 + collection名"]["high"]
-    self.infoArray["数据库名 + 空格 + collection名"]["low"]
-    """
-    infoArray = {}
-    initInfobar = {}
-
-    def __int__(self):
-        super(Prototype, self).__int__()
-
-    # ----------------------------------------------------------------------
-    def onInit(self):
-        """初始化策略（必须由用户继承实现）"""
-        self.writeCtaLog(u'%s策略初始化' % self.name)
-
-        # 初始化RSI入场阈值
-        self.rsiBuy = 50 + self.rsiEntry
-        self.rsiSell = 50 - self.rsiEntry
-
-        # 载入历史数据，并采用回放计算的方式初始化策略数值
-        initData = self.loadBar(self.initDays)
-        for bar in initData:
-
-            # 推送新数据, 同时检查是否有information bar需要推送
-            # Update new bar, check whether the Time Stamp matching any information bar
-            ibar = self.checkInfoBar(bar)
-            self.onBar(bar, infobar=ibar)
-
-        self.putEvent()
-
-    # ----------------------------------------------------------------------
-    def checkInfoBar(self, bar):
-        """在初始化时, 检查辅助品种数据的推送(初始化结束后, 回测时不会调用)"""
-
-        initInfoCursorDict = self.ctaEngine.initInfoCursor
-
-        # 如果"initInfobar"字典为空, 初始化字典, 插入第一个数据
-        # If dictionary "initInfobar" is empty, insert first data record
-        if self.initInfobar == {}:
-            for info_symbol in initInfoCursorDict:
-                try:
-                    self.initInfobar[info_symbol] = next(initInfoCursorDict[info_symbol])
-                except StopIteration:
-                    print "Data of information symbols is empty! Input is a list, not str."
-                    raise
-
-        # 若有某一品种的 TimeStamp 和执行报价的 TimeStamp 匹配, 则将"initInfobar"中的数据推送,
-        # 然后更新该品种的数据
-        # If any symbol's TimeStamp is matched with execution symbol's TimeStamp, return data
-        # in "initInfobar", and update new data.
-        temp = {}
-        for info_symbol in self.initInfobar:
-
-            data = self.initInfobar[info_symbol]
-
-            # Update data only when Time Stamp is matched
-            if data['datetime'] <= bar.datetime:
-                try:
-                    temp[info_symbol] = CtaBarData()
-                    temp[info_symbol].__dict__ = data
-                    self.initInfobar[info_symbol] = next(initInfoCursorDict[info_symbol])
-                except StopIteration:
-                    self.ctaEngine.output("No more data for initializing %s." % (info_symbol,))
-            else:
-                temp[info_symbol] = None
-
-        return temp
-
-    # ----------------------------------------------------------------------
-    def updateInfoArray(self, infobar):
-        """收到Infomation Data, 更新辅助品种缓存字典"""
-
-        for name in infobar:
-
-            data = infobar[name]
-
-            # Construct empty array
-            if len(self.infoArray) < len(infobar) :
-                self.infoArray[name] = {
-                    "close": np.zeros(self.bufferSize),
-                    "high": np.zeros(self.bufferSize),
-                    "low": np.zeros(self.bufferSize)
-                }
-
-            if data is None:
-                pass
-
-            else:
-                self.infoArray[name]["close"][0:self.bufferSize - 1] = \
-                    self.infoArray[name]["close"][1:self.bufferSize]
-                self.infoArray[name]["high"][0:self.bufferSize - 1] = \
-                    self.infoArray[name]["high"][1:self.bufferSize]
-                self.infoArray[name]["low"][0:self.bufferSize - 1] = \
-                    self.infoArray[name]["low"][1:self.bufferSize]
-
-                self.infoArray[name]["close"][-1] = data.close
-                self.infoArray[name]["high"][-1] = data.high
-                self.infoArray[name]["low"][-1] = data.low
-
-    # ----------------------------------------------------------------------
-    def onBar(self, bar, **kwargs):
-        """收到Bar推送（必须由用户继承实现）"""
-        # 撤销之前发出的尚未成交的委托（包括限价单和停止单）
-        for orderID in self.orderList:
-            self.cancelOrder(orderID)
-        self.orderList = []
-
-        # Update infomation data
-        # "infobar"是由不同时间或不同品种的品种数据组成的字典, 如果和执行品种的 TimeStamp 不匹配,
-        # 则传入的是"None", 当time stamp和执行品种匹配时, 传入的是"Bar"
-        self.updateInfoArray(kwargs["infobar"])
-
-        # 保存K线数据
-        self.closeArray[0:self.bufferSize - 1] = self.closeArray[1:self.bufferSize]
-        self.highArray[0:self.bufferSize - 1] = self.highArray[1:self.bufferSize]
-        self.lowArray[0:self.bufferSize - 1] = self.lowArray[1:self.bufferSize]
-
-        self.closeArray[-1] = bar.close
-        self.highArray[-1] = bar.high
-        self.lowArray[-1] = bar.low
-
-        # 若读取的缓存数据不足, 不考虑交易
-        self.bufferCount += 1
-        if self.bufferCount < self.bufferSize:
-            return
-
-        # 计算指标数值
-
-        # 计算不同时间下的ATR数值
-
-        # Only trading when information bar changes
-        # 只有在30min或者1d K线更新后才可以交易
-        TradeOn = False
-        if any([i is not None for i in kwargs["infobar"].values()]):
-
-            TradeOn = True
-            self.scaledAtrValue1M = talib.ATR(self.highArray,
-                                       self.lowArray,
-                                       self.closeArray,
-                                       self.atrLength)[-1] * (25) ** (0.5)
-            self.atrValue30M = talib.abstract.ATR(self.infoArray["TestData @GC_30M"])[-1]
-            self.rsiValue = talib.abstract.RSI(self.infoArray["TestData @GC_30M"], self.rsiLength)[-1]
-
-        self.atrCount += 1
-        if self.atrCount < self.bufferSize:
-            return
-
-        # 判断是否要进行交易
-
-        # 当前无仓位
-        if (self.pos == 0 and TradeOn == True):
-            self.intraTradeHigh = bar.high
-            self.intraTradeLow = bar.low
-
-            # 1Min调整后ATR大于30MinATR
-            # 即处于趋势的概率较大，适合CTA开仓
-            if self.atrValue30M < self.scaledAtrValue1M:
-                # 使用RSI指标的趋势行情时，会在超买超卖区钝化特征，作为开仓信号
-                if self.rsiValue > self.rsiBuy:
-                    # 这里为了保证成交，选择超价5个整指数点下单
-                    self.buy(bar.close+5, 1)
-
-                elif self.rsiValue < self.rsiSell:
-                    self.short(bar.close-5, 1)
-
-                # 下单后, 在下一个30Min K线之前不交易
-                TradeOn = False
-
-        # 持有多头仓位
-        elif self.pos > 0:
-            # 计算多头持有期内的最高价，以及重置最低价
-            self.intraTradeHigh = max(self.intraTradeHigh, bar.high)
-            self.intraTradeLow = bar.low
-            # 计算多头移动止损
-            longStop = self.intraTradeHigh * (1 - self.trailingPercent / 100)
-            # 发出本地止损委托，并且把委托号记录下来，用于后续撤单
-            orderID = self.sell(longStop, 1, stop=True)
-            self.orderList.append(orderID)
-
-        # 持有空头仓位
-        elif self.pos < 0:
-            self.intraTradeLow = min(self.intraTradeLow, bar.low)
-            self.intraTradeHigh = bar.high
-
-            shortStop = self.intraTradeLow * (1 + self.trailingPercent / 100)
-            orderID = self.cover(shortStop, 1, stop=True)
-            self.orderList.append(orderID)
-
-        # 发出状态更新事件
-        self.putEvent()
 
 
 if __name__ == '__main__':
