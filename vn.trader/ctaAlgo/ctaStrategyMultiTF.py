@@ -27,7 +27,8 @@ class BreakOut(CtaTemplate):
 
     #----------------------------------------------------------------------
     def __init__(self, ctaEngine, setting):
-        """日内突破交易策略, 出场方式可为止损止盈, 时间出场, 指标出场, 本文件使用指标出场"""
+        """日内突破交易策略, 出场方式可为止损止盈、时间出场、指标出场, 本文件使用指标出场"""
+
         className = 'BreakOut'
         author = 'Joe'
         super(TC11, self).__init__(ctaEngine, setting)
@@ -60,22 +61,17 @@ class BreakOut(CtaTemplate):
         paramList = ['name',
                      'className',
                      'author',
-                     'vtSymbol',
-                     'atrLength',
-                     'atrMaLength',
-                     'rsiLength',
-                     'rsiEntry',
-                     'trailingPercent']
+                     'pOBO_Mult',
+                     'pProtMult',
+                     'pProfitMult',
+                     'SlTp_On',
+                     'EODTime']
 
         # 变量列表，保存了变量的名称
-        varList = ['inited',
-                   'trading',
-                   'pos',
-                   'atrValue',
-                   'atrMa',
-                   'rsiValue',
-                   'rsiBuy',
-                   'rsiSell']
+        varList = ['vOBO_stretch',
+                   'vOBO_initialpoint',
+                   'vOBO_level_L',
+                   'vOBO_level_S']
 
         # ----------------------------------------------------------------------
     def onInit(self):
@@ -295,9 +291,6 @@ class BreakOut(CtaTemplate):
     # ----------------------------------------------------------------------
     def onTrade(self, trade):
         pass
-
-
-
 
 ########################################################################
 class Prototype(AtrRsiStrategy):
