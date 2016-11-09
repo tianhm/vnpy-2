@@ -26,7 +26,10 @@ class BreakOut(CtaTemplate):
 
     #----------------------------------------------------------------------
     def __init__(self, ctaEngine, setting):
-        """日内突破交易策略, 出场方式非常多, 本文件使用指标出场"""
+        """
+        日内突破交易策略, 出场方式非常多, 本文件使用指标出场
+        本策略只能用Bar模式进行回测
+        """
 
         className = 'BreakOut'
         author = 'Joe'

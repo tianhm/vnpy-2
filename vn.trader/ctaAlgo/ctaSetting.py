@@ -9,6 +9,8 @@
 '''
 
 from ctaDemo import DoubleEmaDemo
+from strategyBreakOut import BreakOut
 
 STRATEGY_CLASS = {}
 STRATEGY_CLASS['DoubleEmaDemo'] = DoubleEmaDemo
+STRATEGY_CLASS['BreakOut'] = BreakOut

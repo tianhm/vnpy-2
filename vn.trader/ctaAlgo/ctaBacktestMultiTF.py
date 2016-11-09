@@ -148,7 +148,7 @@ class BacktestEngineMultiTF(BacktestingEngine):
         self.output("No more historical data")
 
     # ----------------------------------------------------------------------
-    def checkInformationData(self):
+    def checkInformationBar(self):
         """Update information symbols' data"""
 
         # If infobar is empty, which means it is the first time calling this method
@@ -186,23 +186,13 @@ class BacktestEngineMultiTF(BacktestingEngine):
         """new ohlc Bar"""
         self.bar = bar
         self.dt = bar.datetime
-        self.updatePosition()  # Update total position value based on new Bar
         self.crossLimitOrder()  # 先撮合限价单
         self.crossStopOrder()  # 再撮合停止单
         if self.MultiOn is True:
-            self.strategy.onBar(bar, infobar=self.checkInformationData())  # 推送K线到策略中
+            self.strategy.onBar(bar, infobar=self.checkInformationBar())  # 推送K线到策略中
         else:
             self.strategy.onBar(bar)  # 推送K线到策略中
 
-    # ----------------------------------------------------------------------
-    def newTick(self, tick):
-        """新的Tick"""
-        """new Tick"""
-        self.tick = tick
-        self.dt = tick.datetime
-        self.crossLimitOrder()
-        self.crossStopOrder()
-        self.strategy.onTick(tick)
 
 ########################################################################
 
