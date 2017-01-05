@@ -1,8 +1,6 @@
 # encoding: UTF-8
 
 '''
-这个文件加入在CTA回测引擎的基础上加入了辅助品种信息, 保持接口的一致, 可以在原CTA引擎上执行的代码,
-也可以在这个引擎上执行
 This file add multi Time Frame functionalities to CTA backtesting engine, the APIs are the
 same as CTA engine. Real trading code can be directly used for backtesting.
 '''

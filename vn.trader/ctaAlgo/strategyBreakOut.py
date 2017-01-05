@@ -11,46 +11,64 @@ import numpy as np
 class BreakOut(CtaTemplate):
 
     """
-    "infoArray" 字典是用来储存辅助品种信息的, 可以是同品种的不同分钟k线, 也可以是不同品种的价格。
+    "BreakOut" class inherit from "CtaTemplate" class.
 
-    调用的方法:
-    价格序列:
-    self.infoArray["数据库名 + 空格 + collection名"]["close"]
-    self.infoArray["数据库名 + 空格 + collection名"]["high"]
-    self.infoArray["数据库名 + 空格 + collection名"]["low"]
+    "infoArray" is a dictionary, which is to store information symbols.
 
-    单个价格:
-    self.infoBar["数据库名 + 空格 + collection名"]
-    返回的值为一个ctaBarData 或 None
+    Some ideas have to be known:
+    1. An execution symbol contains the information of which instrument to trade (instrument),
+    and how often to trade (time frame).
+    For example, "@GC_15m" means trading "Gold" in 15 minutes bar.
+
+    2. Information symbols cannot be traded, which are to provide additional information for trading.
+
+    3. An information symbol can be the same as execution symbol with a different TimeFrame,
+    or a different instrument.
+    For example, "@GC_30m" or "@CL_1m" can be information symbol for "@GC_1m".
+
+
+    To refer an price array of information symbol, use:
+    self.infoArray["Name of Database + Space + Name of Collection"]["close"]
+    self.infoArray["Name of Database + Space + Name of Collection"]["high"]
+    self.infoArray["Name of Database + Space + Name of Collection"]["low"]
+
+
+    To refer the latest price of information symbol, use:
+    self.infoBar["Name of Database + Space + Name of Collection"]
+
+    Return a "ctaBarData" instance or None (there is no new information data, while new trading data is occured.)
     """
 
     #----------------------------------------------------------------------
     def __init__(self, ctaEngine, setting):
         """
-        日内突破交易策略, 出场方式非常多, 本文件使用指标出场
-        本策略只能用Bar模式进行回测
+        Intraday breakout trading strategy. There are many ways of "Exit", in this file, only technical exit
+        will be used.
+        This strategy can only be backtested in "Bar Mode".
         """
 
         className = 'BreakOut'
         author = 'Joe'
+
+        # Inherit from "ctaEngine" object
         super(BreakOut, self).__init__(ctaEngine, setting)
 
-        # 设置辅助品种数据字典
+        # Set dictionaries for storing data of information symbols
         self.infoArray = {}
         self.initInfobar = {}
         self.infoBar = {}
 
-        # 缓存数据量
+        # Set parameters for buffer size
         self.bufferSize = 100
         self.bufferCount = 0
         self.initDays = 10
 
-        # 设置参数
-        self.pOBO_Mult = 0.5        # 计算突破点位
-        # self.pProtMult = 2          # 止损的ATR倍数
-        # self.pProfitMult = 2        # 止盈相对于止损的倍数
-        # self.SlTp_On = False        # 止损止盈功能
-        # self.EODTime = 15           # 设置日内平仓时间
+        # set parameters
+        self.pOBO_Mult = 0.5           # Calculate breakout level
+        # self.pProtMult = 2           # Multiplier of ATR stop loss
+        # self.pProfitMult = 2         # Multiplier of take profit to stop loss
+        # self.SlTp_On = False         # SL/TP ON/OFF
+        # self.EODTime = 15            # The deadline of "End of Day" Exit
 
         self.vOBO_stretch = EMPTY_FLOAT
         self.vOBO_initialpoint = EMPTY_FLOAT
@@ -59,7 +77,7 @@ class BreakOut(CtaTemplate):
 
         self.orderList = []
 
-        # 参数列表，保存了参数的名称
+        # List of Parameters
         paramList = ['name',
                      'className',
                      'author',
@@ -69,7 +87,7 @@ class BreakOut(CtaTemplate):
                      'SlTp_On',
                      'EODTime']
 
-        # 变量列表，保存了变量的名称
+        # List of Variances
         varList = ['vOBO_stretch',
                    'vOBO_initialpoint',
                    'vOBO_level_L',
@@ -77,14 +95,14 @@ class BreakOut(CtaTemplate):
 
         # ----------------------------------------------------------------------
     def onInit(self):
-        """初始化策略（必须由用户继承实现）"""
-        self.writeCtaLog(u'%s策略初始化' % self.name)
+        """Strategy initialization (user have to define this method)"""
 
-        # 载入历史数据，并采用回放计算的方式初始化策略数值
+        self.writeCtaLog('%s Strategy Initializing' % self.name)
+
+        # Load historical data, initialize strategy parameters by data playback.
         initData = self.loadBar(self.initDays)
         for bar in initData:
 
-            # 推送新数据, 同时检查是否有information bar需要推送
             # Update new bar, check whether the Time Stamp matching any information bar
             ibar = self.checkInfoBar(bar)
             self.onBar(bar, infobar=ibar)
@@ -93,23 +111,26 @@ class BreakOut(CtaTemplate):
 
     #----------------------------------------------------------------------
     def onStart(self):
-        """启动策略（必须由用户继承实现）"""
-        self.writeCtaLog(u'%s策略启动' %self.name)
+        """Strategy starting (user have to define this method)"""
+
+        self.writeCtaLog("%s Strategy Starting" %self.name)
         self.putEvent()
 
     #----------------------------------------------------------------------
     def onStop(self):
-        """停止策略（必须由用户继承实现）"""
-        self.writeCtaLog(u'%s策略停止' %self.name)
+        """Strategy stopping (user have to define this method)"""
+
+        self.writeCtaLog('%s Strategy Stopping' %self.name)
         self.putEvent()
 
     # ----------------------------------------------------------------------
     def checkInfoBar(self, bar):
-        """在初始化时, 检查辅助品种数据的推送(初始化结束后, 回测时不会调用)"""
+        """Update information symbol in initialization process (won't be called after initalization)"""
 
         initInfoCursorDict = self.ctaEngine.initInfoCursor
 
-        # 如果"initInfobar"字典为空, 初始化字典, 插入第一个数据
+        # Information data is temporarily stored in "initInfobar" dictionary and waiting for being pushed.
+        # Only one price for each information symbols are stored in "initInfoba".
         # If dictionary "initInfobar" is empty, insert first data record
         if self.initInfobar == {}:
             for info_symbol in initInfoCursorDict:
@@ -119,16 +140,14 @@ class BreakOut(CtaTemplate):
                     print "Data of information symbols is empty! Input is a list, not str."
                     raise
 
-        # 若有某一品种的 TimeStamp 和执行报价的 TimeStamp 匹配, 则将"initInfobar"中的数据推送,
-        # 然后更新该品种的数据
-        # If any symbol's TimeStamp is matched with execution symbol's TimeStamp, return data
-        # in "initInfobar", and update new data.
+        # If any symbol's Time Stamp is matched with execution symbol's TimeStamp, return the data that
+        # stored in "initInfobar", then update "initInfobar".
         temp = {}
         for info_symbol in self.initInfobar:
 
             data = self.initInfobar[info_symbol]
 
-            # Update data only when Time Stamp is matched
+            # Replace old data by new data, when Time Stamp is matched
 
             if (data is not None) and (data['datetime'] <= bar.datetime):
 
@@ -146,14 +165,17 @@ class BreakOut(CtaTemplate):
 
     # ----------------------------------------------------------------------
     def updateInfoArray(self, infobar):
-        """收到Infomation Data, 更新辅助品种缓存字典"""
+        """
+        Recieve information data, update price array dictionary for information symbols.
+        Input is a dictionary of "bar", output is a dictionary of "array".
+        """
 
         for name in infobar:
 
             data = infobar[name]
 
-            # Construct empty array
-            if len(self.infoArray) < len(infobar) :
+            # First time initialization, construct empty arrays
+            if len(self.infoArray) < len(infobar):
                 self.infoArray[name] = {
                     "close": np.zeros(self.bufferSize),
                     "high": np.zeros(self.bufferSize),
@@ -161,6 +183,8 @@ class BreakOut(CtaTemplate):
                     "open": np.zeros(self.bufferSize)
                 }
 
+            # If there is not new data, do nothing. Else, append new data to the end of array, and
+            # remove the first data of the array (roll over).
             if data is None:
                 pass
 
@@ -181,9 +205,10 @@ class BreakOut(CtaTemplate):
 
     # ----------------------------------------------------------------------
     def onBar(self, bar, **kwargs):
-        """收到Bar推送（必须由用户继承实现）"""
+        """Recieve Bar data (user have to define this method)"""
 
         # Update infomation data
+        # "infobar" is a dictionary
         # "infobar"是由不同时间或不同品种的品种数据组成的字典, 如果和执行品种的 TimeStamp 不匹配,
         # 则传入的是"None", 当time stamp和执行品种匹配时, 传入的是"Bar"
         if "infobar" in kwargs:
@@ -266,11 +291,14 @@ class BreakOut(CtaTemplate):
 
     # ----------------------------------------------------------------------
     def onOrder(self, order):
-        """收到委托变化推送（必须由用户继承实现）"""
+        """Generate order information (user have to define this method)"""
         pass
 
     # ----------------------------------------------------------------------
     def onTrade(self, trade):
+        """Generate trade information (user have to define this method)"""
+        # In backtest engine, no trade is executed. This method still needs to be defined, but
+        # remains empty.
         pass
 
 
