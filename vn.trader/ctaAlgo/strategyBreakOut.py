@@ -206,27 +206,39 @@ class BreakOut(CtaTemplate):
     # ----------------------------------------------------------------------
     def onBar(self, bar, **kwargs):
         """Recieve Bar data (user have to define this method)"""
+        '''
+        Update infomation data
 
-        # Update infomation data
-        # "infobar" is a dictionary
-        # "infobar"是由不同时间或不同品种的品种数据组成的字典, 如果和执行品种的 TimeStamp 不匹配,
-        # 则传入的是"None", 当time stamp和执行品种匹配时, 传入的是"Bar"
+        "infobar" is a dictionary.
+        The keys of "inforbar" are all the information symbols.
+        The items of "inforbar" is a "Bar" instance or "None".
+
+        For example, execution symbol is "@GC_15m", information symbol is "@GC_60m".
+        The information data is store in inforbar["@GC_60m"].
+
+        When the execution Time Stamp is "9:45", since it doesn't belong to time frame 60 minutes.
+        inforbar["@GC_60m"] is "None".
+
+        When the execution Time Stamp is "10:00", since it belongs to time frame 60 minutes.
+        inforbar["@GC_60m"] is a ctaBar instance.
+
+        '''
+
         if "infobar" in kwargs:
             self.infoBar = kwargs["infobar"]
             self.updateInfoArray(kwargs["infobar"])
 
-        # 若读取的缓存数据不足, 不考虑交易
+        # Do not trade if there is no enough data in buffer zone.
         self.bufferCount += 1
         if self.bufferCount < self.bufferSize:
             return
 
-        # 计算指标数值
+        # Calculate indicator
         a = np.sum(self.infoArray["TestData @GC_1D"]["close"])
         if a == 0.0:
             return
 
-        # Only updating indicators when information bar changes
-        # 只有在30min或者1d K线更新后才更新指标
+        # Only updating indicators every 30 or 60 minute.
         TradeOn = False
         if any([i is not None for i in self.infoBar]):
             TradeOn = True
@@ -239,54 +251,52 @@ class BreakOut(CtaTemplate):
 
             self.atrValue30M = talib.abstract.ATR(self.infoArray["TestData @GC_30M"])[-1]
 
-        # 判断是否要进行交易
+        # The rules of opening or closing position
 
-        # 当前无仓位
+        # If no position
         if (self.pos == 0 and TradeOn == True):
 
-            # 撤销之前发出的尚未成交的委托（包括限价单和停止单）
+            # Cancel the order that placed earlier, but did not trigger (including limit order and stop order)
             for orderID in self.orderList:
                 self.cancelOrder(orderID)
             self.orderList = []
 
-            # 若上一个30分钟K线的最高价大于OBO_level_L
-            # 且当前的价格大于OBO_level_L, 则买入
+            # If "high" of last 30M Bar is larger than OBO_level_L, and "close" of
+            # current Bar is larger than OBO_level_L, then buy:
             if self.infoArray["TestData @GC_30M"]["high"][-1] > self.vOBO_level_L:
 
                 if bar.close > self.vOBO_level_L:
 
                     self.buy(bar.close + 0.5, 1)
 
-                    # 下单后, 在下一个30Min K线之前不交易
-                    TradeOn = False
+                    # If an order has been placed, do not trade before the next 30M Bar
 
-            # 若上一个30分钟K线的最高价低于OBO_level_S
-            # 且当前的价格小于OBO_level_S, 则卖出
+
+            # If "low" of last 30M Bar is smaller than OBO_level_S, and "close" of
+            # current Bar is lower than OBO_level_S, then sell:
             elif self.infoArray["TestData @GC_30M"]["low"][-1] < self.vOBO_level_S:
 
                 if bar.close < self.vOBO_level_S:
 
                     self.short(bar.close - 0.5, 1)
 
-                    # 下单后, 在下一个30Min K线之前不交易
-                    TradeOn = False
+                    # If an order has been placed, do not trade before the next 30M Bar
 
-        # 持有多头仓位
+        # If current position is "Long"
         elif self.pos > 0:
 
-            # 当价格低于initialpoint水平, 出场
+            # Sell when current close price is lower than initial point
             if bar.close < self.vOBO_initialpoint:
                 self.sell(bar.close - 0.5 , 1)
 
-        # 持有空头仓位
+        # If current position is "Short"
         elif self.pos < 0:
 
-            # 当价格高于initialpoint水平, 出场
+            # Buy when current close price is higher than initial point
             if bar.close > self.vOBO_initialpoint:
                 self.cover(bar.close + 0.5, 1)
 
-
-        # 发出状态更新事件
+        # Update event status
         self.putEvent()
 
     # ----------------------------------------------------------------------
@@ -297,28 +307,20 @@ class BreakOut(CtaTemplate):
     # ----------------------------------------------------------------------
     def onTrade(self, trade):
         """Generate trade information (user have to define this method)"""
-        # In backtest engine, no trade is executed. This method still needs to be defined, but
-        # remains empty.
+        # In backtest engine, no trade is executed, but in order to keeping the consistence between
+        # "ctaBacktestEngine" and "ctaEngine", this method still needs to be defined. Just remain empty.
         pass
 
 
 if __name__ == '__main__':
-    # 提供直接双击回测的功能
-    # 导入PyQt4的包是为了保证matplotlib使用PyQt4而不是PySide，防止初始化出错
+
     from ctaBacktestMultiTF import *
-    from PyQt4 import QtCore, QtGui
     import time
 
     '''
-    创建回测引擎
-    设置引擎的回测模式为K线
-    设置回测用的数据起始日期
-    载入历史数据到引擎中
-    在引擎中创建策略对象
-
     Create backtesting engine
     Set backtest mode as "Bar"
-    Set "Start Date" of data range
+    Set "Start Date" and "End Date"
     Load historical data to engine
     Create strategy instance in engine
     '''
@@ -332,17 +334,17 @@ if __name__ == '__main__':
     # Set parameters for strategy
     engine.initStrategy(BreakOut, {})
 
-    # 设置产品相关参数
-    engine.setSlippage(0.2)  # 股指1跳
-    engine.setCommission(0.3 / 10000)  # 万0.3
-    engine.setSize(1)  # 股指合约大小
+    # Set parameters for instrument
+    engine.setSlippage(0.2)
+    engine.setCommission(0.3 / 10000)
+    engine.setSize(1)
 
-    # 开始跑回测
+    # Start backtesting
     start = time.time()
 
     engine.runBacktesting()
 
-    # 显示回测结果
+    # Show backtesting result
     engine.showBacktestingResult()
 
     print 'Time consumed：%s' % (time.time() - start)
