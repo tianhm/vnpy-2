@@ -336,7 +336,7 @@ if __name__ == '__main__':
 
     # Set parameters for instrument
     engine.setSlippage(0.2)
-    engine.setCommission(0.3 / 10000)
+    engine.setRate(0.3 / 10000)
     engine.setSize(1)
 
     # Start backtesting

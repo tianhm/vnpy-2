@@ -40,8 +40,8 @@ class BacktestEngineMultiTF(BacktestingEngine):
     # ----------------------------------------------------------------------
     def loadInitData(self, collection, **kwargs):
         """Load initializing data"""
-        # 载入初始化需要用的数据
-        # Load initialised data
+
+        # Load initialization data
 
         # $gte means "greater and equal to"
         # $lt means "less than"
@@ -49,14 +49,12 @@ class BacktestEngineMultiTF(BacktestingEngine):
                             '$lt': self.strategyStartDate}}
         self.initCursor = collection.find(flt)
 
-        # 初始化辅助品种数据
         # Initializing information data
         if "inf" in kwargs:
             for name in kwargs["inf"]:
                 DB = kwargs["inf"][name]
                 self.initInfoCursor[name] = DB.find(flt)
 
-        # 将数据从查询指针中读取出，并生成列表
         # Read data from cursor, generate a list
         self.initData = []
 
@@ -67,7 +65,7 @@ class BacktestEngineMultiTF(BacktestingEngine):
 
     # ----------------------------------------------------------------------
     def loadHistoryData(self):
-        """载入历史数据"""
+
         """load historical data"""
 
         host, port = loadMongoSetting()
@@ -76,7 +74,7 @@ class BacktestEngineMultiTF(BacktestingEngine):
         collection = self.dbClient[self.dbName][self.symbol]
 
         # Load historical data of information symbols, construct a dictionary of Database
-        # Values of dictionary are mongo.Client.
+        # The values of dictionary are MongoDB.Client.
         info_collection = {}
         if self.MultiOn is True:
             for DBname, symbol in self.info_symbols:
@@ -84,7 +82,6 @@ class BacktestEngineMultiTF(BacktestingEngine):
 
         self.output("Start loading historical data")
 
-        # 首先根据回测模式，确认要使用的数据类
         # Choose data type based on backtest mode
         if self.mode == self.BAR_MODE:
             self.dataClass = CtaBarData
@@ -96,7 +93,6 @@ class BacktestEngineMultiTF(BacktestingEngine):
         # Load initializing data
         self.loadInitData(collection, inf=info_collection)
 
-        # 载入回测数据
         # Load backtest data (exclude initializing data)
         if not self.dataEndDate:
             # If "End Date" is not set, retreat data up to today
@@ -117,10 +113,9 @@ class BacktestEngineMultiTF(BacktestingEngine):
 
     # ----------------------------------------------------------------------
     def runBacktesting(self):
-        """运行回测"""
+
         """Run backtesting"""
 
-        # 载入历史数据
         # Load historical data
         self.loadHistoryData()
 
@@ -180,7 +175,7 @@ class BacktestEngineMultiTF(BacktestingEngine):
 
     # ----------------------------------------------------------------------
     def newBar(self, bar):
-        """新的K线"""
+
         """new ohlc Bar"""
         self.bar = bar
         self.dt = bar.datetime
