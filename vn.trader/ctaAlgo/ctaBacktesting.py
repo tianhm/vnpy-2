@@ -378,9 +378,9 @@ class BacktestingEngine(object):
                 
                 # Buy as example:
                 # 1. Suppose the OHLC of current Bar are 100, 125, 90, 110 (Open = 100)
-                # 2. Suppose at the end of last Bar(not the start of current Bar), the price of limit order is 105,
+                # 2. Suppose at the end of last Bar (not the start of current Bar), the price of limit order is 105,
                 #    (Last Close = 105)
-                # 3. In real trading, the trade price will be 100 instead of 105, because the best market price is 100
+                # 3. Actually, the trade price will be 100 instead of 105, because the best market price is 100
                 if buyCross:
                     trade.price = min(order.price, buyBestCrossPrice)
                     self.strategy.pos += order.totalVolume

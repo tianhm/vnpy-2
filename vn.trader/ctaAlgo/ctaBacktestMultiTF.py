@@ -16,11 +16,13 @@ class BacktestEngineMultiTF(BacktestingEngine):
         """Constructor"""
         super(BacktestEngineMultiTF, self).__init__()
 
-        self.info_symbols   = []        # List, 输入辅助品种的2值tuple, 左边为数据库名, 右边为collection名
-        self.InfoCursor     = {}        # Dict, 放置回测用辅助品种数据库
-        self.initInfoCursor = {}        # Dict, 放置初始化用辅助品种数据库
-        self.infobar        = {}        # Dict, 放置辅助品种最新一个K线数据
-        self.MultiOn        = False     # Boolean, 判断是否传入了辅助品种
+        # List, input 2-value tuples, the first value is name of database, the second
+        # value is name of collection. For example, ("TestData","@GC_30M")
+        self.info_symbols   = []
+        self.InfoCursor     = {}        # Dict, place information symbol data for backtesting
+        self.initInfoCursor = {}        # Dict, place information symbol data for initializing
+        self.infobar        = {}        # Dict, place the latest bar data for information symbols
+        self.MultiOn        = False     # Boolean, check whether multi time frame is activated
 
     # ----------------------------------------------------------------------
     def setDatabase(self, dbName, symbol, **kwargs):
@@ -179,12 +181,12 @@ class BacktestEngineMultiTF(BacktestingEngine):
         """new ohlc Bar"""
         self.bar = bar
         self.dt = bar.datetime
-        self.crossLimitOrder()  # 先撮合限价单
-        self.crossStopOrder()  # 再撮合停止单
+        self.crossLimitOrder()  # Check any limit order is triggered
+        self.crossStopOrder()   # Check any stop order is triggered
         if self.MultiOn is True:
-            self.strategy.onBar(bar, infobar=self.checkInformationBar())  # 推送K线到策略中
+            self.strategy.onBar(bar, infobar=self.checkInformationBar())  # Push data (Bar) to strategy
         else:
-            self.strategy.onBar(bar)  # 推送K线到策略中
+            self.strategy.onBar(bar)  # Push data (Bar) to strategy
 
 
 ########################################################################
