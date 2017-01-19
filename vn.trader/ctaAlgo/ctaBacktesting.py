@@ -339,31 +339,34 @@ class BacktestingEngine(object):
             
     #----------------------------------------------------------------------
     def crossLimitOrder(self):
-        """Check LimitOrder base on the latest market data"""
+        """Check LimitOrder based on the latest market data"""
 
-        # 先确定会撮合成交的价格
-        # First, calculate order price
+        # Define trigger prices, "bar mode" and "tick mode" are different.
         if self.mode == self.BAR_MODE:
-            buyCrossPrice = self.bar.low        # 若买入方向限价单价格高于该价格，则会成交
-            sellCrossPrice = self.bar.high      # 若卖出方向限价单价格低于该价格，则会成交
-            buyBestCrossPrice = self.bar.open   # 在当前时间点前发出的买入委托可能的最优成交价
-            sellBestCrossPrice = self.bar.open  # 在当前时间点前发出的卖出委托可能的最优成交价
+
+            # If "low" is lower than order price, then buy
+            buyCrossPrice = self.bar.low
+            # If "high" is higher than order price, then sell
+            sellCrossPrice = self.bar.high
+            buyBestCrossPrice = self.bar.open
+            sellBestCrossPrice = self.bar.open
         else:
             buyCrossPrice = self.tick.askPrice1
             sellCrossPrice = self.tick.bidPrice1
             buyBestCrossPrice = self.tick.askPrice1
             sellBestCrossPrice = self.tick.bidPrice1
         
-        # 遍历限价单字典中的所有限价单
+        # Loop through all the limit order in "workingLimitOrderDict"
         for orderID, order in self.workingLimitOrderDict.items():
-            # 判断是否会成交
+            # Check to trade or not
+
+            # If "low" is lower than order price and the direction is "long", then this order is triggered
             buyCross = order.direction==DIRECTION_LONG and order.price>=buyCrossPrice
+            # If "high" is higher than order price and the direction is "short", then this order is triggered
             sellCross = order.direction==DIRECTION_SHORT and order.price<=sellCrossPrice
-            
-            # 如果发生了成交
-            # If transaction happens
+
+            # If trades
             if buyCross or sellCross:
-                # 推送成交数据
                 # Update trade data
                 self.tradeCount += 1            # TradeID increase by 1
                 tradeID = str(self.tradeCount)
@@ -394,37 +397,36 @@ class BacktestingEngine(object):
                 self.strategy.onTrade(trade)
                 
                 self.tradeDict[tradeID] = trade
-                
-                # 推送委托数据
+
                 # Upadte order data
                 order.tradedVolume = order.totalVolume
                 order.status = STATUS_ALLTRADED
                 self.strategy.onOrder(order)
-                
-                # 从字典中删除该限价单
-                # Remove this order from "working limit order dictionary"
+
+                # Remove this order from "workingLimitOrderDict"
                 del self.workingLimitOrderDict[orderID]
                 
     #----------------------------------------------------------------------
     def crossStopOrder(self):
-        """基于最新数据撮合停止单"""
-        # 先确定会撮合成交的价格，这里和限价单规则相反
+        """Check StopOrder based on the latest market data"""
+
+        # Define trigger price, the rule is contrary to limit order
         if self.mode == self.BAR_MODE:
-            buyCrossPrice = self.bar.high    # 若买入方向停止单价格低于该价格，则会成交
-            sellCrossPrice = self.bar.low    # 若卖出方向限价单价格高于该价格，则会成交
-            bestCrossPrice = self.bar.open   # 最优成交价，买入停止单不能低于，卖出停止单不能高于
+            buyCrossPrice = self.bar.high
+            sellCrossPrice = self.bar.low
+            bestCrossPrice = self.bar.open
         else:
             buyCrossPrice = self.tick.lastPrice
             sellCrossPrice = self.tick.lastPrice
             bestCrossPrice = self.tick.lastPrice
-        
-        # 遍历停止单字典中的所有停止单
+
+        # Loop through all the stop order in "workingStopOrderDict"
         for stopOrderID, so in self.workingStopOrderDict.items():
-            # 判断是否会成交
+            # Check to trade or not
             buyCross = so.direction==DIRECTION_LONG and so.price<=buyCrossPrice
             sellCross = so.direction==DIRECTION_SHORT and so.price>=sellCrossPrice
-            
-            # 如果发生了成交
+
+            # If trades
             if buyCross or sellCross:
                 # 推送成交数据
                 self.tradeCount += 1            # 成交编号自增1
@@ -506,8 +508,6 @@ class BacktestingEngine(object):
     #----------------------------------------------------------------------
     def calculateBacktestingResult(self):
         """
-        计算回测结果
-
         Calculate backtesting result
         """
 
