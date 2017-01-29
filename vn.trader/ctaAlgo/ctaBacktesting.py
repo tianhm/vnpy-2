@@ -127,9 +127,10 @@ class BacktestingEngine(object):
         self.mode = mode
     
     #----------------------------------------------------------------------
-    def setDatabase(self, dbName, symbol):
+    def setDatabase(self, dbType, dbName, symbol):
         """set database that provide historical data"""
 
+        self.dbType      = dbType
         self.dbName      = dbName
         self.symbol      = symbol
     
@@ -137,45 +138,107 @@ class BacktestingEngine(object):
     def loadHistoryData(self):
         """load historical data"""
 
-        host, port = loadMongoSetting()
-        
-        self.dbClient = pymongo.MongoClient(host, port)
-        collection = self.dbClient[self.dbName][self.symbol]
+        if self.dbType == "MongoDB":
 
-        self.output("Start loading historical data")
-      
-        # Choose data type based on backtest mode
-        if self.mode == self.BAR_MODE:
-            dataClass = CtaBarData
-        else:
-            dataClass = CtaTickData
+            host, port = loadMongoSetting()
 
-        # Load initialised data
+            self.dbClient = pymongo.MongoClient(host, port)
+            collection = self.dbClient[self.dbName][self.symbol]
 
-        # $gte means "greater and equal to"
-        # $lt means "less than"
-        flt = {'datetime':{'$gte':self.dataStartDate,
-                           '$lt':self.strategyStartDate}}        
-        initCursor = collection.find(flt)
-        
-        # Read data from cursor, generate a list
-        self.initData = []                                      # Empty "initData" list
-        for d in initCursor:
-            data = dataClass()
-            data.__dict__ = d
-            self.initData.append(data)
+            self.output("Start loading historical data from MongoDB")
 
-        # Load backtest data (exclude initialised data)
-        if not self.dataEndDate:
+            # Choose data type based on backtest mode
+            if self.mode == self.BAR_MODE:
+                dataClass = CtaBarData
+            else:
+                dataClass = CtaTickData
 
-            # If "End Date" is not set, retreat data up to today
-            flt = {'datetime':{'$gte':self.strategyStartDate}}
-        else:
-            flt = {'datetime':{'$gte':self.strategyStartDate,
-                               '$lte':self.dataEndDate}}  
-        self.dbCursor = collection.find(flt)
-        
-        self.output("Data loading complete, data volumn: %s" %(initCursor.count() + self.dbCursor.count()))
+            # Load initialised data
+
+            # $gte means "greater and equal to"
+            # $lt means "less than"
+            flt = {'datetime':{'$gte':self.dataStartDate,
+                               '$lt':self.strategyStartDate}}
+            initCursor = collection.find(flt)
+
+            # Read data from cursor, generate a list
+            self.initData = []                                      # Empty "initData" list
+            for d in initCursor:
+                data = dataClass()
+                data.__dict__ = d
+                self.initData.append(data)
+
+            # Load backtest data (exclude initialised data)
+            if not self.dataEndDate:
+
+                # If "End Date" is not set, retreat data up to today
+                flt = {'datetime':{'$gte':self.strategyStartDate}}
+            else:
+                flt = {'datetime':{'$gte':self.strategyStartDate,
+                                   '$lte':self.dataEndDate}}
+            self.dbCursor = collection.find(flt)
+
+            self.output("Data loading complete, data volumn: %s" %(initCursor.count() + self.dbCursor.count()))
+
+        elif self.dbType == "SQLite":
+
+            import sqlite3 as sq
+
+            DBpath = "Z:\9Data\\1SQL_Database\%s" % (self.dbName)
+            self.output("Start loading historical data from SQLite")
+
+            def dict_factory(cursor, row):
+                d = {}
+                for idx, col in enumerate(cursor.description):
+                    new_name = col[0].lower()
+                    d[new_name] = row[idx]
+
+                    # if new_name == "datetime":
+                    #     new_date = datetime.strptime(row[idx], '%Y-%m-%d %H:%M:%S')
+                    #     d[new_name] = new_date
+                    # else:
+                    #     d[new_name] = row[idx]
+
+                return d
+
+            conn = sq.connect(DBpath)
+            conn.row_factory = dict_factory
+            db = conn.cursor()
+
+            # Choose data type based on backtest mode
+            if self.mode == self.BAR_MODE:
+                dataClass = CtaBarData
+            else:
+                dataClass = CtaTickData
+
+            # Load initialization data
+
+            initCursor = db.execute("""
+            SELECT * FROM '%s' WHERE (DateTime >= '%s' and DateTime < '%s')
+            """ % (self.symbol, self.dataStartDate, self.strategyStartDate)).fetchall()
+
+            # Read data from cursor, generate a list
+            self.initData = []  # Empty "initData" list
+            for d in initCursor:
+                data = dataClass()
+                data.__dict__ = d
+                self.initData.append(data)
+
+            # Load backtest data (exclude initialised data)
+            if not self.dataEndDate:
+
+                # If "End Date" is not set, retreat data up to today
+                self.dbCursor = db.execute("""
+                    SELECT * FROM '%s' WHERE DateTime >= '%s'
+                    """ % (self.symbol, self.strategyStartDate,)).fetchall()
+
+            else:
+
+                self.dbCursor = db.execute("""
+                    SELECT * FROM '%s' WHERE (DateTime >= '%s' and DateTime < '%s')
+                    """ % (self.symbol, self.strategyStartDate, self.dataEndDate)).fetchall()
+
+            self.output("Data loading complete, data volumn: %s" % (len(initCursor) + len(self.dbCursor)))
         
     #----------------------------------------------------------------------
     def runBacktesting(self):
@@ -689,7 +752,7 @@ class BacktestingEngine(object):
     def showBacktestingResult(self):
         """显示回测结果"""
         d = self.calculateBacktestingResult()
-        
+
         # 输出
         self.output('-' * 30)
         self.output('First Trade：\t%s' % d['timeList'][0])

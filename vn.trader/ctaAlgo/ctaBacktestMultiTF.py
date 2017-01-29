@@ -7,6 +7,7 @@ same as CTA engine. Real trading code can be directly used for backtesting.
 
 from __future__ import division
 from vtFunction import loadMongoSetting
+import pymongo
 
 from ctaBacktesting import *
 
@@ -25,9 +26,10 @@ class BacktestEngineMultiTF(BacktestingEngine):
         self.MultiOn        = False     # Boolean, check whether multi time frame is activated
 
     # ----------------------------------------------------------------------
-    def setDatabase(self, dbName, symbol, **kwargs):
+    def setDatabase(self, dbType, dbName, symbol, **kwargs):
         """set database that provide historical data"""
 
+        self.dbType = dbType
         self.dbName = dbName
 
         # Set executed symbol and information symbols
@@ -41,17 +43,16 @@ class BacktestEngineMultiTF(BacktestingEngine):
 
     # ----------------------------------------------------------------------
     def loadInitData(self, collection, **kwargs):
-        """Load initializing data"""
-
-        # Load initialization data
+        """Load initialization data"""
 
         # $gte means "greater and equal to"
         # $lt means "less than"
+        # Initializing data of execution symbol
         flt = {'datetime': {'$gte': self.dataStartDate,
                             '$lt': self.strategyStartDate}}
         self.initCursor = collection.find(flt)
 
-        # Initializing information data
+        # Initializing data of information symbols
         if "inf" in kwargs:
             for name in kwargs["inf"]:
                 DB = kwargs["inf"][name]
@@ -67,51 +68,147 @@ class BacktestEngineMultiTF(BacktestingEngine):
 
     # ----------------------------------------------------------------------
     def loadHistoryData(self):
-
         """load historical data"""
-
-        host, port = loadMongoSetting()
-
-        self.dbClient = pymongo.MongoClient(host, port)
-        collection = self.dbClient[self.dbName][self.symbol]
-
-        # Load historical data of information symbols, construct a dictionary of Database
-        # The values of dictionary are MongoDB.Client.
-        info_collection = {}
-        if self.MultiOn is True:
-            for DBname, symbol in self.info_symbols:
-                info_collection[DBname + " " + symbol] = self.dbClient[DBname][symbol]
-
-        self.output("Start loading historical data")
 
         # Choose data type based on backtest mode
         if self.mode == self.BAR_MODE:
             self.dataClass = CtaBarData
-            self.func      = self.newBar
+            self.func = self.newBar
         else:
             self.dataClass = CtaTickData
             self.func = self.newTick
 
-        # Load initializing data
-        self.loadInitData(collection, inf=info_collection)
+        ###############################################################
+        # Select type of database
+        ###############################################################
 
-        # Load backtest data (exclude initializing data)
-        if not self.dataEndDate:
-            # If "End Date" is not set, retreat data up to today
-            flt = {'datetime': {'$gte': self.strategyStartDate}}
-        else:
-            flt = {'datetime': {'$gte': self.strategyStartDate,
-                                '$lte': self.dataEndDate}}
-        self.dbCursor = collection.find(flt)
+        if self.dbType == "MongoDB":
 
-        if self.MultiOn is True:
-            for db in info_collection:
-                self.InfoCursor[db] = info_collection[db].find(flt)
+            # Load data of execution symbol
+            host, port = loadMongoSetting()
+
+            self.dbClient = pymongo.MongoClient(host, port)
+            collection = self.dbClient[self.dbName][self.symbol]
+
+            # Load historical data of information symbols, construct a dictionary of Database
+            # The values of dictionary are MongoDB.Client.
+            info_collection = {}
+            if self.MultiOn is True:
+                for DBname, symbol in self.info_symbols:
+                    info_collection[DBname + " " + symbol] = self.dbClient[DBname][symbol]
+
+            self.output("Start loading historical data from MongoDB")
+
+            # Load initializing data
+            self.loadInitData(collection, inf=info_collection)
+
+            # Load backtest data (exclude initializing data)
+            if not self.dataEndDate:
+                # If "End Date" is not set, retreat data up to today
+                flt = {'datetime': {'$gte': self.strategyStartDate}}
+            else:
+                flt = {'datetime': {'$gte': self.strategyStartDate,
+                                    '$lte': self.dataEndDate}}
+            self.dbCursor = collection.find(flt)
+
+            if self.MultiOn is True:
+                for db in info_collection:
+                    self.InfoCursor[db] = info_collection[db].find(flt)
+                self.output(
+                    "Data loading completed, data volumn: %s" % (self.initCursor.count() + self.dbCursor.count() + \
+                                                                 sum([i.count() for i in self.InfoCursor.values()])))
+            else:
+                self.output("Data loading completed, data volumn: %s" % (self.initCursor.count() + self.dbCursor.count()))
+
+        elif self.dbType == "SQLite":
+
+            import sqlite3 as sq
+            self.output("Start loading historical data from SQLite")
+
+            # Define a function to read SQL data as dictionaries
+            def dict_factory(cursor, row):
+                d = {}
+                for idx, col in enumerate(cursor.description):
+                    new_name = col[0].lower()
+                    if new_name == "datetime":
+                        new_date = datetime.strptime(row[idx], '%Y-%m-%d %H:%M:%S')
+                        d[new_name] = new_date
+                    else:
+                        d[new_name] = row[idx]
+
+                return d
+
+            ###############################################################
+            # Load initialization data
+            ###############################################################
+            DBpath = "Z:\9Data\\1SQL_Database\%s" % (self.dbName)
+            conn = sq.connect(DBpath)
+            conn.row_factory = dict_factory
+            exedb = conn.cursor()
+
+            # Load data of execution symbol, then convert List of data to Generator
+            self.initCursor = exedb.execute("""
+            SELECT * FROM '%s' WHERE (DateTime >= '%s' and DateTime < '%s')
+            """ % (self.symbol, self.dataStartDate, self.strategyStartDate))
+
+            # Read data from cursor, generate a list of CtaData
+            self.initData = []
+            for d in self.initCursor:
+                data = self.dataClass()
+                data.__dict__ = d
+                self.initData.append(data)
+
+            ###############################################################
+            # Load initialization data of information symbols, construct a dictionary of Database
+            ###############################################################
+            if self.MultiOn is True:
+                for DBname, symbol in self.info_symbols:
+                    temp = sq.connect(DBpath)
+                    temp.row_factory = dict_factory
+                    self.initInfoCursor[symbol] = temp.cursor()
+                    self.initInfoCursor[symbol].execute("""
+                    SELECT * FROM '%s' WHERE (DateTime >= '%s' and DateTime < '%s')
+                    """ % (symbol, self.dataStartDate, self.strategyStartDate))
+
+            ###############################################################
+            # Load data for backtesting (exclude data for initializing)
+            ###############################################################
+
+            if not self.dataEndDate:
+                # If "End Date" is not set, retreat data up to today
+                self.dbCursor = exedb.execute("""
+                                SELECT * FROM '%s' WHERE DateTime >= '%s'
+                                """ % (self.symbol, self.strategyStartDate,))
+
+
+                if self.MultiOn is True:
+                    for DBname, symbol in self.info_symbols:
+                        temp = sq.connect(DBpath)
+                        temp.row_factory = dict_factory
+                        self.InfoCursor[symbol] = temp.cursor()
+                        self.InfoCursor[symbol].execute("""
+                        SELECT * FROM '%s' WHERE DateTime >= '%s'
+                        """ % (symbol, self.strategyStartDate))
+
+            else:
+
+                self.dbCursor = exedb.execute("""
+                                SELECT * FROM '%s' WHERE (DateTime >= '%s' and DateTime < '%s')
+                                """ % (self.symbol, self.strategyStartDate, self.dataEndDate))
+
+                if self.MultiOn is True:
+                    for DBname, symbol in self.info_symbols:
+                        temp = sq.connect(DBpath)
+                        temp.row_factory = dict_factory
+                        self.InfoCursor[symbol] = temp.cursor()
+                        self.InfoCursor[symbol].execute("""
+                        SELECT * FROM '%s' WHERE (DateTime >= '%s' and DateTime < '%s')
+                        """ % (symbol, self.strategyStartDate, self.dataEndDate))
+
             self.output(
-                "Data loading completed, data volumn: %s" % (self.initCursor.count() + self.dbCursor.count() + \
-                                                             sum([i.count() for i in self.InfoCursor.values()])))
-        else:
-            self.output("Data loading completed, data volumn: %s" % (self.initCursor.count() + self.dbCursor.count()))
+                    "Data loading completed, execution data volumn: %s" % (len(self.initData)))
+
+
 
     # ----------------------------------------------------------------------
     def runBacktesting(self):

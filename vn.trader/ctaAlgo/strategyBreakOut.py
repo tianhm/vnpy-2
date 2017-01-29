@@ -6,6 +6,7 @@ This file tweaks ctaTemplate Module to suit multi-TimeFrame strategies.
 from ctaBase import *
 from ctaTemplate import CtaTemplate
 import numpy as np
+import talib
 
 ########################################################################
 class BreakOut(CtaTemplate):
@@ -28,13 +29,13 @@ class BreakOut(CtaTemplate):
 
 
     To refer an price array of information symbol, use:
-    self.infoArray["Name of Database + Space + Name of Collection"]["close"]
-    self.infoArray["Name of Database + Space + Name of Collection"]["high"]
-    self.infoArray["Name of Database + Space + Name of Collection"]["low"]
+    self.infoArray["Name of Collection"]["close"]
+    self.infoArray["Name of Collection"]["high"]
+    self.infoArray["Name of Collection"]["low"]
 
 
     To refer the latest price of information symbol, use:
-    self.infoBar["Name of Database + Space + Name of Collection"]
+    self.infoBar["Name of Collection"]
 
     Return a "ctaBarData" instance or None (there is no new information data, while new trading data is occured.)
     """
@@ -234,7 +235,7 @@ class BreakOut(CtaTemplate):
             return
 
         # Calculate indicator
-        a = np.sum(self.infoArray["TestData @GC_1D"]["close"])
+        a = np.sum(self.infoArray["@GC_1D"]["close"])
         if a == 0.0:
             return
 
@@ -242,14 +243,14 @@ class BreakOut(CtaTemplate):
         TradeOn = False
         if any([i is not None for i in self.infoBar]):
             TradeOn = True
-            self.vRange = self.infoArray["TestData @GC_1D"]["high"][-1] -\
-                          self.infoArray["TestData @GC_1D"]["low"][-1]
+            self.vRange = self.infoArray["@GC_1D"]["high"][-1] -\
+                          self.infoArray["@GC_1D"]["low"][-1]
             self.vOBO_stretch = self.vRange * self.pOBO_Mult
-            self.vOBO_initialpoint = self.infoArray["TestData @GC_1D"]["close"][-1]
+            self.vOBO_initialpoint = self.infoArray["@GC_1D"]["close"][-1]
             self.vOBO_level_L = self.vOBO_initialpoint + self.vOBO_stretch
             self.vOBO_level_S = self.vOBO_initialpoint - self.vOBO_stretch
 
-            self.atrValue30M = talib.abstract.ATR(self.infoArray["TestData @GC_30M"])[-1]
+            self.atrValue30M = talib.abstract.ATR(self.infoArray["@GC_30T"])[-1]
 
         # The rules of opening or closing position
 
@@ -263,7 +264,7 @@ class BreakOut(CtaTemplate):
 
             # If "high" of last 30M Bar is larger than OBO_level_L, and "close" of
             # current Bar is larger than OBO_level_L, then buy:
-            if self.infoArray["TestData @GC_30M"]["high"][-1] > self.vOBO_level_L:
+            if self.infoArray["@GC_30T"]["high"][-1] > self.vOBO_level_L:
 
                 if bar.close > self.vOBO_level_L:
 
@@ -274,7 +275,7 @@ class BreakOut(CtaTemplate):
 
             # If "low" of last 30M Bar is smaller than OBO_level_S, and "close" of
             # current Bar is lower than OBO_level_S, then sell:
-            elif self.infoArray["TestData @GC_30M"]["low"][-1] < self.vOBO_level_S:
+            elif self.infoArray["@GC_30T"]["low"][-1] < self.vOBO_level_S:
 
                 if bar.close < self.vOBO_level_S:
 
@@ -328,8 +329,8 @@ if __name__ == '__main__':
     engine.setBacktestingMode(engine.BAR_MODE)
     engine.setStartDate('20120101')
     engine.setEndDate('20150101')
-    engine.setDatabase("TestData", "@GC_1M", info_symbol=[("TestData","@GC_30M"),
-                                                          ("TestData","@GC_1D")])
+    engine.setDatabase("SQLite", "ZCDatabase.db", "@GC_1T", info_symbol=[("ZCDatabase.db","@GC_30T"),
+                                                                         ("ZCDatabase.db","@GC_1D")])
 
     # Set parameters for strategy
     engine.initStrategy(BreakOut, {})

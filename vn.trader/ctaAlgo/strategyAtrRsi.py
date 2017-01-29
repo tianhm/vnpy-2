@@ -258,15 +258,15 @@ if __name__ == '__main__':
     '''
     engine = BacktestingEngine()
     engine.setBacktestingMode(engine.BAR_MODE)
-    engine.setStartDate('20150101')
-    engine.setDatabase("TestData", "@GC_1M")
+    engine.setStartDate('20160101')
+    engine.setDatabase("SQLite", "ZCDatabase.db", "@GC_1T")
     # Set parameters for strategy
     d = {'atrLength': 11}
     engine.initStrategy(AtrRsiStrategy, d)
     
     # 设置产品相关参数
     engine.setSlippage(0.2)     # 股指1跳
-    engine.setCommission(0.3/10000)   # 万0.3
+    engine.setRate(0.3/10000)   # 万0.3
     engine.setSize(300)         # 股指合约大小
     
     # 开始跑回测
