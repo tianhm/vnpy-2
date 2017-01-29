@@ -6,6 +6,7 @@ This file tweaks ctaTemplate Module to suit multi-TimeFrame strategies.
 from ctaBase import *
 from ctaTemplate import CtaTemplate
 import numpy as np
+import talib
 
 ########################################################################
 class BreakOut(CtaTemplate):
