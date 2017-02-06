@@ -402,31 +402,34 @@ class BacktestingEngine(object):
             
     #----------------------------------------------------------------------
     def crossLimitOrder(self):
-        """Check LimitOrder base on the latest market data"""
+        """Check LimitOrder based on the latest market data"""
 
-        # 先确定会撮合成交的价格
-        # First, calculate order price
+        # Define trigger prices, "bar mode" and "tick mode" are different.
         if self.mode == self.BAR_MODE:
-            buyCrossPrice = self.bar.low        # 若买入方向限价单价格高于该价格，则会成交
-            sellCrossPrice = self.bar.high      # 若卖出方向限价单价格低于该价格，则会成交
-            buyBestCrossPrice = self.bar.open   # 在当前时间点前发出的买入委托可能的最优成交价
-            sellBestCrossPrice = self.bar.open  # 在当前时间点前发出的卖出委托可能的最优成交价
+
+            # If "low" is lower than order price, then buy
+            buyCrossPrice = self.bar.low
+            # If "high" is higher than order price, then sell
+            sellCrossPrice = self.bar.high
+            buyBestCrossPrice = self.bar.open
+            sellBestCrossPrice = self.bar.open
         else:
             buyCrossPrice = self.tick.askPrice1
             sellCrossPrice = self.tick.bidPrice1
             buyBestCrossPrice = self.tick.askPrice1
             sellBestCrossPrice = self.tick.bidPrice1
         
-        # 遍历限价单字典中的所有限价单
+        # Loop through all the limit order in "workingLimitOrderDict"
         for orderID, order in self.workingLimitOrderDict.items():
-            # 判断是否会成交
+            # Whether to trade or not
+
+            # If "low" is lower than order price and the direction is "long", then this order is triggered
             buyCross = order.direction==DIRECTION_LONG and order.price>=buyCrossPrice
+            # If "high" is higher than order price and the direction is "short", then this order is triggered
             sellCross = order.direction==DIRECTION_SHORT and order.price<=sellCrossPrice
-            
-            # 如果发生了成交
-            # If transaction happens
+
+            # If trades
             if buyCross or sellCross:
-                # 推送成交数据
                 # Update trade data
                 self.tradeCount += 1            # TradeID increase by 1
                 tradeID = str(self.tradeCount)
@@ -457,40 +460,39 @@ class BacktestingEngine(object):
                 self.strategy.onTrade(trade)
                 
                 self.tradeDict[tradeID] = trade
-                
-                # 推送委托数据
+
                 # Upadte order data
                 order.tradedVolume = order.totalVolume
                 order.status = STATUS_ALLTRADED
                 self.strategy.onOrder(order)
-                
-                # 从字典中删除该限价单
-                # Remove this order from "working limit order dictionary"
+
+                # Remove this order from "workingLimitOrderDict"
                 del self.workingLimitOrderDict[orderID]
                 
     #----------------------------------------------------------------------
     def crossStopOrder(self):
-        """基于最新数据撮合停止单"""
-        # 先确定会撮合成交的价格，这里和限价单规则相反
+        """Check StopOrder based on the latest market data"""
+
+        # Define trigger price, the rule is contrary to limit order
         if self.mode == self.BAR_MODE:
-            buyCrossPrice = self.bar.high    # 若买入方向停止单价格低于该价格，则会成交
-            sellCrossPrice = self.bar.low    # 若卖出方向限价单价格高于该价格，则会成交
-            bestCrossPrice = self.bar.open   # 最优成交价，买入停止单不能低于，卖出停止单不能高于
+            buyCrossPrice = self.bar.high
+            sellCrossPrice = self.bar.low
+            bestCrossPrice = self.bar.open
         else:
             buyCrossPrice = self.tick.lastPrice
             sellCrossPrice = self.tick.lastPrice
             bestCrossPrice = self.tick.lastPrice
-        
-        # 遍历停止单字典中的所有停止单
+
+        # Loop through all the stop order in "workingStopOrderDict"
         for stopOrderID, so in self.workingStopOrderDict.items():
-            # 判断是否会成交
+            # Whether to trade or not
             buyCross = so.direction==DIRECTION_LONG and so.price<=buyCrossPrice
             sellCross = so.direction==DIRECTION_SHORT and so.price>=sellCrossPrice
-            
-            # 如果发生了成交
+
+            # If trades
             if buyCross or sellCross:
-                # 推送成交数据
-                self.tradeCount += 1            # 成交编号自增1
+                # Update trade data
+                self.tradeCount += 1            # TradeID increase by 1
                 tradeID = str(self.tradeCount)
                 trade = VtTradeData()
                 trade.vtSymbol = so.vtSymbol
@@ -517,8 +519,8 @@ class BacktestingEngine(object):
                 self.strategy.onTrade(trade)
                 
                 self.tradeDict[tradeID] = trade
-                
-                # 推送委托数据
+
+                # Upadte order data
                 so.status = STOPORDER_TRIGGERED
                 
                 order = VtOrderData()
@@ -536,161 +538,164 @@ class BacktestingEngine(object):
                 self.strategy.onOrder(order)
                 
                 self.limitOrderDict[orderID] = order
-                
-                # 从字典中删除该限价单
+
+                # Remove this order from "workingStopOrderDict"
                 del self.workingStopOrderDict[stopOrderID]        
 
     #----------------------------------------------------------------------
     def insertData(self, dbName, collectionName, data):
-        """考虑到回测中不允许向数据库插入数据，防止实盘交易中的一些代码出错"""
+        """Ban this functionality in backtesting mode"""
         pass
     
     #----------------------------------------------------------------------
     def loadBar(self, dbName, collectionName, startDate):
-        """直接返回初始化数据列表中的Bar"""
+        """Return bar in initialization data"""
         return self.initData
     
     #----------------------------------------------------------------------
     def loadTick(self, dbName, collectionName, startDate):
-        """直接返回初始化数据列表中的Tick"""
+        """Return tick in initialization data"""
         return self.initData
     
     #----------------------------------------------------------------------
     def writeCtaLog(self, content):
-        """记录日志"""
+        """Record Log"""
         log = str(self.dt) + ' ' + content 
         self.logList.append(log)
         
     #----------------------------------------------------------------------
     def output(self, content):
-        """输出内容"""
+        """Output content"""
         print str(datetime.now()) + "\t" + content 
     
     #----------------------------------------------------------------------
     def calculateBacktestingResult(self):
         """
-        计算回测结果
-
         Calculate backtesting result
         """
 
         self.output("Calculating backtesting result")
-        
-        # 首先基于回测后的成交记录，计算每笔交易的盈亏
+
         # First, based on trade lists, calculate profit/loss for each trade
 
-        resultList = []             # 交易结果列表
+        resultList = []             # Record result of trades
         
-        longTrade = []              # 未平仓的多头交易
-        shortTrade = []             # 未平仓的空头交易
+        longTrade = []              # Record long trades that haven't been closed
+        shortTrade = []             # Record short trades that haven't been closed
 
         for trade in self.tradeDict.values():
+
             # Long Trades
             if trade.direction == DIRECTION_LONG:
-                # 如果尚无空头交易
+
+                # If no short position holds
                 if not shortTrade:
                     longTrade.append(trade)
-                # 当前多头交易为平空
+
+                # If exists short position, this long trade is a close trade
                 else:
                     while True:
                         entryTrade = shortTrade[0]
                         exitTrade = trade
-                        
-                        # 清算开平仓交易
+
+                        # Calculate close trade
                         closedVolume = min(exitTrade.volume, entryTrade.volume)
                         result = TradingResult(entryTrade.price, entryTrade.dt, 
                                                exitTrade.price, exitTrade.dt,
                                                -closedVolume, self.rate, self.slippage, self.size)
                         resultList.append(result)
-                        
-                        # 计算未清算部分
+
+                        # Calculate the remaining position
                         entryTrade.volume -= closedVolume
                         exitTrade.volume -= closedVolume
-                        
-                        # 如果开仓交易已经全部清算，则从列表中移除
+
+                        # If no remaining position for entry trade, remove this trade from "shortTrade" list
                         if not entryTrade.volume:
                             shortTrade.pop(0)
-                        
-                        # 如果平仓交易已经全部清算，则退出循环
+
+                        # If no remaining position for exit trade, exits this loop
                         if not exitTrade.volume:
                             break
-                        
-                        # 如果平仓交易未全部清算，
+
+                        # If exit trade has remaining position
                         if exitTrade.volume:
-                            # 且开仓交易已经全部清算完，则平仓交易剩余的部分
-                            # 等于新的反向开仓交易，添加到队列中
+                            # If entry trade is cleared
+                            # the remaining part of exit trade equals to a long trade
                             if not shortTrade:
                                 longTrade.append(exitTrade)
                                 break
-                            # 如果开仓交易还有剩余，则进入下一轮循环
+                            # If entry trade is not cleared, goes to next iteration
                             else:
                                 pass
-                        
-            # 空头交易        
+
+            # Short trades
             else:
-                # 如果尚无多头交易
+
+                # If no long position holds
                 if not longTrade:
                     shortTrade.append(trade)
-                # 当前空头交易为平多
+
+                # If exists long position
                 else:                    
                     while True:
                         entryTrade = longTrade[0]
                         exitTrade = trade
-                        
-                        # 清算开平仓交易
+
+                        # Calculate close trade
                         closedVolume = min(exitTrade.volume, entryTrade.volume)
                         result = TradingResult(entryTrade.price, entryTrade.dt, 
                                                exitTrade.price, exitTrade.dt,
                                                closedVolume, self.rate, self.slippage, self.size)
                         resultList.append(result)
                         
-                        # 计算未清算部分
+                        # Calculate the remaining position
                         entryTrade.volume -= closedVolume
                         exitTrade.volume -= closedVolume
                         
-                        # 如果开仓交易已经全部清算，则从列表中移除
+                        # If no remaining position for entry trade, remove this trade from "longTrade" list
                         if not entryTrade.volume:
                             longTrade.pop(0)
                         
-                        # 如果平仓交易已经全部清算，则退出循环
+                        # If no remaining position for exit trade, exits this loop
                         if not exitTrade.volume:
                             break
                         
-                        # 如果平仓交易未全部清算，
+                        # If exit trade has remaining position
                         if exitTrade.volume:
-                            # 且开仓交易已经全部清算完，则平仓交易剩余的部分
-                            # 等于新的反向开仓交易，添加到队列中
+                            # If entry trade is cleared
+                            # the remaining part of exit trade equals to a long trade
                             if not longTrade:
                                 shortTrade.append(exitTrade)
                                 break
-                            # 如果开仓交易还有剩余，则进入下一轮循环
+
+                            # If entry trade is not cleared, goes to next iteration
                             else:
                                 pass                    
-                    
-        # 检查是否有交易
+
+        # If no trade has been recorded
         if not resultList:
             self.output("No trade has been recorded")
             return {}
         
-        # 然后基于每笔交易的结果，我们可以计算具体的盈亏曲线和最大回撤等        
-        capital = 0             # 资金
-        maxCapital = 0          # 资金最高净值
-        drawdown = 0            # 回撤
+        # Based on trades results, calculate indicators, such as equity curve and maximum drawdown
+        capital = 0             # Equity
+        maxCapital = 0          # Maximum equity
+        drawdown = 0
         
-        totalResult = 0         # 总成交数量
-        totalTurnover = 0       # 总成交金额（合约面值）
-        totalCommission = 0     # 总手续费
-        totalSlippage = 0       # 总滑点
+        totalResult = 0         # Number of total trades
+        totalTurnover = 0
+        totalCommission = 0
+        totalSlippage = 0
         
-        timeList = []           # 时间序列
-        pnlList = []            # 每笔盈亏序列
-        capitalList = []        # 盈亏汇总的时间序列
-        drawdownList = []       # 回撤的时间序列
+        timeList = []           # Record trading time for every trades
+        pnlList = []            # Record profit (or loss) for every trades
+        capitalList = []        # Record equity curve
+        drawdownList = []       # Record drawdown
         
-        winningResult = 0       # 盈利次数
-        losingResult = 0        # 亏损次数		
-        totalWinning = 0        # 总盈利金额		
-        totalLosing = 0         # 总亏损金额        
+        winningResult = 0       # Win trades
+        losingResult = 0        # Loss trades
+        totalWinning = 0        # Total win
+        totalLosing = 0         # Total loss
         
         for result in resultList:
             capital += result.pnl
@@ -698,7 +703,7 @@ class BacktestingEngine(object):
             drawdown = capital - maxCapital
             
             pnlList.append(result.pnl)
-            timeList.append(result.exitDt)      # 交易的时间戳使用平仓时间
+            timeList.append(result.exitDt)      # Record exit time as trading time
             capitalList.append(capital)
             drawdownList.append(drawdown)
             
@@ -715,20 +720,21 @@ class BacktestingEngine(object):
                 totalLosing += result.pnl
                 
         # 计算盈亏相关数据
-        winningRate = winningResult/totalResult*100         # 胜率
+        # Calculate indicators, such as WinRatio, AveTrade, Profit Factor
+        winningRate = winningResult/totalResult*100
         
-        averageWinning = 0                                  # 这里把数据都初始化为0
+        averageWinning = 0
         averageLosing = 0
         profitLossRatio = 0
         
         if winningResult:
-            averageWinning = totalWinning/winningResult     # 平均每笔盈利
+            averageWinning = totalWinning/winningResult     # Ave win
         if losingResult:
-            averageLosing = totalLosing/losingResult        # 平均每笔亏损
+            averageLosing = totalLosing/losingResult        # Ave loss
         if averageLosing:
-            profitLossRatio = -averageWinning/averageLosing # 盈亏比
+            profitLossRatio = -averageWinning/averageLosing # Profit factor
 
-        # 返回回测结果
+        # Return results
         d = {}
         d['capital'] = capital
         d['maxCapital'] = maxCapital
@@ -750,10 +756,11 @@ class BacktestingEngine(object):
         
     #----------------------------------------------------------------------
     def showBacktestingResult(self):
-        """显示回测结果"""
+        """Show backtesting result"""
+
         d = self.calculateBacktestingResult()
 
-        # 输出
+        # Output
         self.output('-' * 30)
         self.output('First Trade：\t%s' % d['timeList'][0])
         self.output('Last Trade：\t%s' % d['timeList'][-1])
@@ -789,22 +796,22 @@ class BacktestingEngine(object):
     
     #----------------------------------------------------------------------
     def putStrategyEvent(self, name):
-        """发送策略更新事件，回测中忽略"""
+        """Update strategy event"""
         pass
 
     #----------------------------------------------------------------------
     def setSlippage(self, slippage):
-        """设置滑点点数"""
+        """Set slippage"""
         self.slippage = slippage
         
     #----------------------------------------------------------------------
     def setSize(self, size):
-        """设置合约大小"""
+        """Set contract size"""
         self.size = size
         
     #----------------------------------------------------------------------
     def setRate(self, rate):
-        """设置佣金比例"""
+        """Set commission ratio"""
         self.rate = rate
 
     #----------------------------------------------------------------------
@@ -881,7 +888,7 @@ class BacktestingEngine(object):
         pool.close()
         pool.join()
         
-        # 显示结果
+        # Show results
         resultList = [res.get() for res in l]
         resultList.sort(reverse=True, key=lambda result:result[1])
         self.output('-' * 30)
@@ -892,25 +899,25 @@ class BacktestingEngine(object):
 
 ########################################################################
 class TradingResult(object):
-    """每笔交易的结果"""
+    """Result of a trade (open and close)"""
 
     #----------------------------------------------------------------------
     def __init__(self, entryPrice, entryDt, exitPrice, 
                  exitDt, volume, rate, slippage, size):
         """Constructor"""
-        self.entryPrice = entryPrice    # 开仓价格
-        self.exitPrice = exitPrice      # 平仓价格
+        self.entryPrice = entryPrice    # Entry price
+        self.exitPrice = exitPrice      # Exit price
         
-        self.entryDt = entryDt          # 开仓时间datetime    
-        self.exitDt = exitDt            # 平仓时间
+        self.entryDt = entryDt          # Entry time
+        self.exitDt = exitDt            # Exit time
         
-        self.volume = volume    # 交易数量（+/-代表方向）
+        self.volume = volume    # Trade volumn (+/- for direction)
         
-        self.turnover = (self.entryPrice+self.exitPrice)*size*abs(volume)   # 成交金额
-        self.commission = self.turnover*rate                                # 手续费成本
-        self.slippage = slippage*2*size*abs(volume)                         # 滑点成本
+        self.turnover = (self.entryPrice+self.exitPrice)*size*abs(volume)   # Volumn of transaction
+        self.commission = self.turnover*rate                                # Commission
+        self.slippage = slippage*2*size*abs(volume)                         # Slippage
         self.pnl = ((self.exitPrice - self.entryPrice) * volume * size 
-                    - self.commission - self.slippage)                      # 净盈亏
+                    - self.commission - self.slippage)                      # Net profit
 
 
 ########################################################################
@@ -1000,18 +1007,12 @@ def optimize(strategyClass, setting, targetName,
 
 
 if __name__ == '__main__':
-    # 以下内容是一段回测脚本的演示，用户可以根据自己的需求修改
-    # 建议使用ipython notebook或者spyder来做回测
-    # 同样可以在命令模式下进行回测（一行一行输入运行）
+
+    # Following is a demo of strategy backtesting
+
     from ctaDemo import *
 
     '''
-    创建回测引擎
-    设置引擎的回测模式为K线
-    设置回测用的数据起始日期
-    载入历史数据到引擎中
-    在引擎中创建策略对象
-
     Create backtesting engine
     Set backtest mode as "Bar"
     Set "Start Date" of data range
@@ -1021,21 +1022,16 @@ if __name__ == '__main__':
     engine = BacktestingEngine()
     engine.setBacktestingMode(engine.BAR_MODE)
     engine.setStartDate('20140101')
-    engine.setDatabase(MINUTE_DB_NAME, 'IF0000')
+    engine.setDatabase("SQLite", "ZCDatabase.db", "@GC_1T")
     engine.initStrategy(DoubleEmaDemo, {})
+
+    # Set parameters for instrument
+    engine.setSlippage(0.2)
+    engine.setRate(0.3/10000)
+    engine.setSize(300)
     
-    # 设置产品相关参数
-    # Set relevant parameters
-    engine.setSlippage(0.2)     # 股指1跳
-    engine.setRate(0.3/10000)   # 万0.3
-    engine.setSize(300)         # 股指合约大小
-    
-    # 开始跑回测
+    # Start backtesting
     engine.runBacktesting()
     
-    # 显示回测结果
-    # spyder或者ipython notebook中运行时，会弹出盈亏曲线图
-    # 直接在cmd中回测则只会打印一些回测数值
+    # Show backtesting result
     engine.showBacktestingResult()
-    
-    
