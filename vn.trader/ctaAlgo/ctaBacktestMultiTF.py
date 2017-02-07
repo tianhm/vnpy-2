@@ -95,7 +95,7 @@ class BacktestEngineMultiTF(BacktestingEngine):
             info_collection = {}
             if self.MultiOn is True:
                 for DBname, symbol in self.info_symbols:
-                    info_collection[DBname + " " + symbol] = self.dbClient[DBname][symbol]
+                    info_collection[symbol] = self.dbClient[DBname][symbol]
 
             self.output("Start loading historical data from MongoDB")
 

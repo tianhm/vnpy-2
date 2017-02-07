@@ -327,10 +327,13 @@ if __name__ == '__main__':
     '''
     engine = BacktestEngineMultiTF()
     engine.setBacktestingMode(engine.BAR_MODE)
-    engine.setStartDate('20120101')
-    engine.setEndDate('20150101')
-    engine.setDatabase("SQLite", "ZCDatabase.db", "@GC_1T", info_symbol=[("ZCDatabase.db","@GC_30T"),
-                                                                         ("ZCDatabase.db","@GC_1D")])
+    engine.setStartDate('20100101')
+    engine.setEndDate('20160101')
+    # engine.setDatabase("SQLite", "ZCDatabase.db", "@GC_1T", info_symbol=[("ZCDatabase.db","@GC_30T"),
+    #                                                                      ("ZCDatabase.db","@GC_1D")])
+
+    engine.setDatabase("MongoDB", "TestData", "@GC_1T", info_symbol=[("TestData", "@GC_30T"),
+                                                                     ("TestData", "@GC_1D")])
 
     # Set parameters for strategy
     engine.initStrategy(BreakOut, {})
