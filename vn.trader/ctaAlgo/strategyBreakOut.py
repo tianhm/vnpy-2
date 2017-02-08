@@ -229,20 +229,28 @@ class BreakOut(CtaTemplate):
             self.infoBar = kwargs["infobar"]
             self.updateInfoArray(kwargs["infobar"])
 
-        # Do not trade if there is no enough data in buffer zone.
+        # Do not trade until buffer zone has enough data
         self.bufferCount += 1
         if self.bufferCount < self.bufferSize:
             return
 
-        # Calculate indicator
         a = np.sum(self.infoArray["@GC_1D"]["close"])
         if a == 0.0:
             return
 
-        # Only updating indicators every 30 or 60 minute.
+        # When the flag is "False", do not trade (place order)
         TradeOn = False
+
+        # Only updating indicators every 30 or 60 minute
         if any([i is not None for i in self.infoBar]):
+
+            # Only place order when indicators are updated
             TradeOn = True
+
+            ########################################################################
+            # Calculate indicators
+            ########################################################################
+
             self.vRange = self.infoArray["@GC_1D"]["high"][-1] -\
                           self.infoArray["@GC_1D"]["low"][-1]
             self.vOBO_stretch = self.vRange * self.pOBO_Mult
@@ -252,45 +260,53 @@ class BreakOut(CtaTemplate):
 
             self.atrValue30M = talib.abstract.ATR(self.infoArray["@GC_30T"])[-1]
 
-        # The rules of opening or closing position
 
-        # If no position
+        ########################################################################
+        # The rules of trading (open/close position)
+        ########################################################################
+
+        # If "TradeOn" flag is "False", skip the loop
+
+        # If no position holds, and "TradeOn" flag is "True"
         if (self.pos == 0 and TradeOn == True):
 
-            # Cancel the order that placed earlier, but did not trigger (including limit order and stop order)
+            # Cancel the orders that placed earlier, but did not trigger (including limit order and stop order)
             for orderID in self.orderList:
                 self.cancelOrder(orderID)
             self.orderList = []
 
+            ########################################################################
             # If "high" of last 30M Bar is larger than OBO_level_L, and "close" of
             # current Bar is larger than OBO_level_L, then buy:
+            ########################################################################
             if self.infoArray["@GC_30T"]["high"][-1] > self.vOBO_level_L:
 
                 if bar.close > self.vOBO_level_L:
 
                     self.buy(bar.close + 0.5, 1)
 
-                    # If an order has been placed, do not trade before the next 30M Bar
-
-
+            ########################################################################
             # If "low" of last 30M Bar is smaller than OBO_level_S, and "close" of
             # current Bar is lower than OBO_level_S, then sell:
+            ########################################################################
             elif self.infoArray["@GC_30T"]["low"][-1] < self.vOBO_level_S:
 
                 if bar.close < self.vOBO_level_S:
 
                     self.short(bar.close - 0.5, 1)
 
-                    # If an order has been placed, do not trade before the next 30M Bar
-
+        ########################################################################
         # If current position is "Long"
+        ########################################################################
         elif self.pos > 0:
 
             # Sell when current close price is lower than initial point
             if bar.close < self.vOBO_initialpoint:
                 self.sell(bar.close - 0.5 , 1)
 
+        ########################################################################
         # If current position is "Short"
+        ########################################################################
         elif self.pos < 0:
 
             # Buy when current close price is higher than initial point
