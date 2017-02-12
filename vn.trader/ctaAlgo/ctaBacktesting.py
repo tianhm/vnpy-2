@@ -184,7 +184,7 @@ class BacktestingEngine(object):
 
             import sqlite3 as sq
 
-            DBpath = "Z:\9Data\\1SQL_Database\%s" % (self.dbName)
+            DBpath = "Z:\9Data\\1SQL_Database\%s" % (self.dbName) + ".db"
             self.output("Start loading historical data from SQLite")
 
             def dict_factory(cursor, row):

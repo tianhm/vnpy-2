@@ -141,7 +141,7 @@ class BacktestEngineMultiTF(BacktestingEngine):
             ###############################################################
             # Load initialization data
             ###############################################################
-            DBpath = "Z:\9Data\\1SQL_Database\%s" % (self.dbName)
+            DBpath = "Z:\9Data\\1SQL_Database\%s" % (self.dbName) + ".db"
             conn = sq.connect(DBpath)
             conn.row_factory = dict_factory
             exedb = conn.cursor()

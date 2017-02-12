@@ -1,6 +1,8 @@
 # encoding: UTF-8
 """
 This file tweaks ctaTemplate Module to suit multi-TimeFrame strategies.
+
+author: Joe Zhou
 """
 
 from ctaBase import *
@@ -345,8 +347,8 @@ if __name__ == '__main__':
     engine.setBacktestingMode(engine.BAR_MODE)
     engine.setStartDate('20100101')
     engine.setEndDate('20160101')
-    # engine.setDatabase("SQLite", "ZCDatabase.db", "@GC_1T", info_symbol=[("ZCDatabase.db","@GC_30T"),
-    #                                                                      ("ZCDatabase.db","@GC_1D")])
+    # engine.setDatabase("SQLite", "ZCDatabase", "@GC_1T", info_symbol=[("ZCDatabase","@GC_30T"),
+    #                                                                      ("ZCDatabase","@GC_1D")])
 
     engine.setDatabase("MongoDB", "TestData", "@GC_1T", info_symbol=[("TestData", "@GC_30T"),
                                                                      ("TestData", "@GC_1D")])
